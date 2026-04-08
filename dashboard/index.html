@@ -82,6 +82,13 @@
         right: -50px;
       }
 
+      .hero-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
       .eyebrow {
         font-size: 12px;
         letter-spacing: 0.18em;
@@ -186,6 +193,37 @@
 
       .button-primary:hover {
         background: #0a694b;
+      }
+
+      .made-by {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(29, 26, 23, 0.12);
+        background: rgba(255, 255, 255, 0.58);
+        color: var(--muted);
+        text-decoration: none;
+        white-space: nowrap;
+        transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+      }
+
+      .made-by:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.86);
+      }
+
+      .made-by strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .telegram-icon {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+        color: #229ed9;
       }
 
       .section {
@@ -415,14 +453,28 @@
           flex-direction: column;
           align-items: flex-start;
         }
+
+        .hero-top {
+          flex-direction: column;
+        }
       }
     </style>
   </head>
   <body>
     <main>
       <section class="hero">
-        <p class="eyebrow">TON Mainnet Governance</p>
-        <h1>Config voting, without explorer noise.</h1>
+        <div class="hero-top">
+          <div>
+            <p class="eyebrow">TON Mainnet Governance</p>
+            <h1>Config voting live</h1>
+          </div>
+          <a class="made-by" href="https://t.me/lagus_research" target="_blank" rel="noreferrer">
+            <svg class="telegram-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="currentColor" d="M21.4 4.6a2 2 0 0 0-2.1-.3L3.8 10.7a1.5 1.5 0 0 0 .1 2.8l3.8 1.2 1.5 4.9a1.5 1.5 0 0 0 2.6.5l2.2-2.7 3.8 2.8a1.9 1.9 0 0 0 3-1.1l2.6-13a2 2 0 0 0-1-2.2Zm-3 2.7-8.2 7.3a1 1 0 0 0-.3.5l-.5 2.3-.9-3 9.9-8.1Zm-11 5.9-2.1-.7 11.7-5-9.6 5.7Zm12.1 5.8-4.7-3.5a1 1 0 0 0-1.4.2l-1.8 2.2.6-2.6 8-7.1Z"/>
+            </svg>
+            <span>made by <strong>@lagus_research</strong></span>
+          </a>
+        </div>
         <p class="hero-copy">
           This page reads the real mainnet config contract on every refresh and turns validator weight, rounds,
           and proposal payloads into plain English.
