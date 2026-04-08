@@ -81,6 +81,7 @@
         background: radial-gradient(circle, rgba(12, 124, 89, 0.18), transparent 70%);
         top: -70px;
         right: -50px;
+        pointer-events: none;
       }
 
       .hero-top {
@@ -88,6 +89,8 @@
         justify-content: space-between;
         align-items: flex-start;
         gap: 16px;
+        position: relative;
+        z-index: 1;
       }
 
       .eyebrow {
@@ -243,6 +246,8 @@
         text-decoration: none;
         white-space: nowrap;
         transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+        position: relative;
+        z-index: 1;
       }
 
       .made-by:hover {
