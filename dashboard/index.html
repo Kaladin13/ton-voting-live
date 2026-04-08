@@ -576,12 +576,14 @@
       const footerNote = document.getElementById('footer-note');
       const refreshButton = document.getElementById('refresh-button');
       const tonviewerLink = document.getElementById('tonviewer-link');
+      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot';
+      const SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 
       let refreshTimer = null;
       let loading = false;
 
       refreshButton.addEventListener('click', () => {
-        loadSnapshot();
+        loadSnapshot({ force: true });
       });
 
       proposalList.addEventListener('click', async (event) => {
@@ -619,16 +621,38 @@
       start();
 
       function start() {
+        const cached = readStoredSnapshot();
+        if (cached) {
+          renderSnapshot(cached.snapshot);
+          if (!isStoredSnapshotExpired(cached)) {
+            refreshTimer = window.setInterval(loadSnapshot, 30000);
+            return;
+          }
+        }
+
         loadSnapshot();
         refreshTimer = window.setInterval(loadSnapshot, 30000);
       }
 
-      async function loadSnapshot() {
+      async function loadSnapshot(options = {}) {
+        const force = options.force === true;
+        const cached = readStoredSnapshot();
+
+        if (!force && cached && !isStoredSnapshotExpired(cached)) {
+          renderSnapshot(cached.snapshot);
+          return;
+        }
+
         if (loading) {
           return;
         }
         loading = true;
-        setStatus('Loading live mainnet data…', 'empty');
+        if (cached) {
+          renderSnapshot(cached.snapshot);
+          setStatus('Refreshing live mainnet data…', 'empty');
+        } else {
+          setStatus('Loading live mainnet data…', 'empty');
+        }
 
         try {
           const response = await fetch('/api/status', { cache: 'no-store' });
@@ -638,17 +662,64 @@
             throw new Error(payload.error || 'Failed to load voting status');
           }
 
+          writeStoredSnapshot(payload);
           renderSnapshot(payload);
         } catch (error) {
-          setStatus(error.message || 'Failed to load live data', 'error');
-          heroStats.innerHTML = '';
-          heroMeta.innerHTML = '';
-          proposalList.innerHTML = '';
-          proposalCounter.textContent = '';
-          footerNote.textContent = 'The page could not reach the live mainnet data source.';
+          if (cached) {
+            renderSnapshot(cached.snapshot);
+            setStatus('Showing saved data; live refresh failed.', 'empty');
+          } else {
+            setStatus(error.message || 'Failed to load live data', 'error');
+            heroStats.innerHTML = '';
+            heroMeta.innerHTML = '';
+            proposalList.innerHTML = '';
+            proposalCounter.textContent = '';
+            footerNote.textContent = 'The page could not reach the live mainnet data source.';
+          }
         } finally {
           loading = false;
         }
+      }
+
+      function readStoredSnapshot() {
+        try {
+          const raw = window.localStorage.getItem(SNAPSHOT_STORAGE_KEY);
+          if (!raw) {
+            return null;
+          }
+
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed.savedAt !== 'number' || !parsed.snapshot || typeof parsed.snapshot !== 'object') {
+            window.localStorage.removeItem(SNAPSHOT_STORAGE_KEY);
+            return null;
+          }
+
+          return parsed;
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function writeStoredSnapshot(snapshot) {
+        try {
+          window.localStorage.setItem(SNAPSHOT_STORAGE_KEY, JSON.stringify({
+            savedAt: Date.now(),
+            snapshot,
+          }));
+        } catch (error) {
+        }
+      }
+
+      function isStoredSnapshotExpired(entry) {
+        return Date.now() - getStoredSnapshotTimestamp(entry) > SNAPSHOT_MAX_AGE_MS;
+      }
+
+      function getStoredSnapshotTimestamp(entry) {
+        const fetchedAt = Date.parse(entry.snapshot && entry.snapshot.fetchedAt ? entry.snapshot.fetchedAt : '');
+        if (Number.isFinite(fetchedAt)) {
+          return fetchedAt;
+        }
+        return entry.savedAt;
       }
 
       function renderSnapshot(snapshot) {
