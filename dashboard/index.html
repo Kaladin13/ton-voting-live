@@ -156,6 +156,15 @@
         font-size: 0.95rem;
       }
 
+      .meta-link {
+        color: #2296f3;
+        text-decoration: none;
+      }
+
+      .meta-link:hover {
+        text-decoration: underline;
+      }
+
       .actions {
         margin-top: 18px;
         display: flex;
@@ -193,6 +202,32 @@
 
       .button-primary:hover {
         background: #0a694b;
+      }
+
+      .copy-hash {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(29, 26, 23, 0.12);
+        background: rgba(255, 255, 255, 0.68);
+        color: var(--ink);
+      }
+
+      .copy-hash:hover {
+        background: white;
+      }
+
+      .copy-hash.copied {
+        border-color: rgba(12, 124, 89, 0.28);
+        background: rgba(12, 124, 89, 0.12);
+      }
+
+      .copy-label {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--muted);
       }
 
       .made-by {
@@ -344,10 +379,39 @@
       }
 
       .progress-fill {
+        position: relative;
+        z-index: 1;
         height: 100%;
         border-radius: inherit;
         background: linear-gradient(90deg, #0c7c59 0%, #d28f35 100%);
         transition: width 240ms ease;
+      }
+
+      .progress-threshold {
+        position: absolute;
+        left: 75%;
+        top: -6px;
+        bottom: -6px;
+        width: 2px;
+        border-radius: 999px;
+        background: rgba(29, 26, 23, 0.45);
+        z-index: 2;
+      }
+
+      .progress-threshold-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .progress-threshold-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: rgba(29, 26, 23, 0.45);
       }
 
       .metric-grid {
@@ -518,6 +582,38 @@
         loadSnapshot();
       });
 
+      proposalList.addEventListener('click', async (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        const button = target ? target.closest('.copy-hash') : null;
+        if (!button) {
+          return;
+        }
+
+        const value = button.dataset.copyValue;
+        if (!value) {
+          return;
+        }
+
+        const copied = await copyText(value);
+        if (!copied) {
+          return;
+        }
+
+        const label = button.querySelector('.copy-label');
+        const previous = label ? label.textContent : '';
+        button.classList.add('copied');
+        if (label) {
+          label.textContent = 'Copied';
+        }
+
+        window.setTimeout(() => {
+          button.classList.remove('copied');
+          if (label) {
+            label.textContent = previous || 'Copy';
+          }
+        }, 1200);
+      });
+
       start();
 
       function start() {
@@ -570,7 +666,7 @@
         ].join('');
 
         heroMeta.innerHTML = [
-          `<span>Config contract <span class="mono">${snapshot.configContract.friendly}</span></span>`,
+          `<span>Config contract <a class="meta-link mono" href="${snapshot.configContract.tonviewerUrl}" target="_blank" rel="noreferrer">${snapshot.configContract.friendly}</a></span>`,
           `<span>Validator round ends ${roundEnds}</span>`,
           `<span>Last pulled ${fetchedAt}</span>`,
         ].join('');
@@ -642,10 +738,15 @@
           <div class="progress-panel">
             <div class="progress-top">
               <span>Current round progress</span>
-              <strong>${proposal.yesPercentOfThreshold}% of the round threshold</strong>
+              <strong>${proposal.yesPercentOfTotal}% of total validator weight</strong>
             </div>
             <div class="progress-track">
-              <div class="progress-fill" style="width: ${proposal.progressPercent}%"></div>
+              <div class="progress-fill" style="width: ${proposal.yesPercentOfTotal}%"></div>
+              <div class="progress-threshold" aria-hidden="true"></div>
+            </div>
+            <div class="progress-threshold-label">
+              <span class="progress-threshold-dot" aria-hidden="true"></span>
+              <span>Threshold at 75% of total validator weight</span>
             </div>
             <div class="metric-grid">${metrics}</div>
           </div>
@@ -653,7 +754,13 @@
           ${changes}
 
           <div class="meta">
-            <span>Proposal hash <span class="mono">${proposal.hash.slice(0, 16)}…${proposal.hash.slice(-10)}</span></span>
+            <span>
+              Proposal hash
+              <button class="copy-hash" type="button" data-copy-value="${proposal.hash}">
+                <span class="mono">${proposal.hash.slice(0, 16)}…${proposal.hash.slice(-10)}</span>
+                <span class="copy-label">Copy</span>
+              </button>
+            </span>
             <span>Expires ${deadline}</span>
           </div>
         `;
@@ -685,6 +792,31 @@
         }
         statusNode.className = kind;
         statusNode.textContent = message;
+      }
+
+      async function copyText(value) {
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(value);
+            return true;
+          }
+        } catch (error) {
+        }
+
+        try {
+          const input = document.createElement('textarea');
+          input.value = value;
+          input.setAttribute('readonly', '');
+          input.style.position = 'absolute';
+          input.style.left = '-9999px';
+          document.body.appendChild(input);
+          input.select();
+          const copied = document.execCommand('copy');
+          document.body.removeChild(input);
+          return copied;
+        } catch (error) {
+          return false;
+        }
       }
 
       function formatTime(input) {
