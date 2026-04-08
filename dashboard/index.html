@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TON Config Voting</title>
+    <style>
+      :root {
+        --bg: #f4f0e8;
+        --bg-strong: #e8dfcf;
+        --card: rgba(255, 252, 246, 0.82);
+        --card-strong: rgba(255, 248, 238, 0.94);
+        --ink: #1d1a17;
+        --muted: #62584f;
+        --line: rgba(29, 26, 23, 0.12);
+        --accent: #0c7c59;
+        --accent-soft: rgba(12, 124, 89, 0.14);
+        --warn: #a44a3f;
+        --critical: #912d1f;
+        --shadow: 0 20px 50px rgba(68, 46, 20, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(217, 191, 123, 0.4), transparent 34%),
+          radial-gradient(circle at top right, rgba(12, 124, 89, 0.16), transparent 26%),
+          linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+        min-height: 100vh;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(29, 26, 23, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(29, 26, 23, 0.02) 1px, transparent 1px);
+        background-size: 22px 22px;
+        pointer-events: none;
+        opacity: 0.45;
+      }
+
+      main {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 32px 20px 72px;
+        position: relative;
+      }
+
+      .hero,
+      .proposal,
+      .empty,
+      .error {
+        backdrop-filter: blur(10px);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 28px;
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        padding: 28px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero::after {
+        content: "";
+        position: absolute;
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(12, 124, 89, 0.18), transparent 70%);
+        top: -70px;
+        right: -50px;
+      }
+
+      .eyebrow {
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--muted);
+        margin: 0 0 8px;
+      }
+
+      h1,
+      h2,
+      h3 {
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        margin: 0;
+        font-weight: 600;
+        line-height: 0.96;
+      }
+
+      h1 {
+        font-size: clamp(2.5rem, 8vw, 5rem);
+        max-width: 10ch;
+      }
+
+      .hero-copy {
+        max-width: 64ch;
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+
+      .stats {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 14px;
+      }
+
+      .stat {
+        padding: 16px 18px;
+        border-radius: 20px;
+        background: var(--card-strong);
+        border: 1px solid rgba(29, 26, 23, 0.08);
+      }
+
+      .stat-label {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .stat-value {
+        display: block;
+        font-size: 1.7rem;
+        margin-top: 8px;
+        line-height: 1.05;
+      }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 16px;
+        margin-top: 18px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .actions {
+        margin-top: 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      button,
+      a.button-link {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font: inherit;
+        font-weight: 600;
+        text-decoration: none;
+        color: var(--ink);
+        background: #fdf9f0;
+        border: 1px solid rgba(29, 26, 23, 0.12);
+        cursor: pointer;
+        transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+      }
+
+      button:hover,
+      a.button-link:hover {
+        transform: translateY(-1px);
+        background: white;
+      }
+
+      .button-primary {
+        background: var(--accent);
+        color: white;
+        border-color: transparent;
+      }
+
+      .button-primary:hover {
+        background: #0a694b;
+      }
+
+      .section {
+        margin-top: 26px;
+      }
+
+      .section-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .section-title p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .proposal-list {
+        display: grid;
+        gap: 18px;
+      }
+
+      .proposal {
+        padding: 24px;
+        transform: translateY(14px);
+        opacity: 0;
+        animation: rise 420ms ease forwards;
+      }
+
+      .proposal:nth-child(2) {
+        animation-delay: 80ms;
+      }
+
+      .proposal:nth-child(3) {
+        animation-delay: 160ms;
+      }
+
+      @keyframes rise {
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .proposal-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .proposal-title {
+        font-size: clamp(1.6rem, 4vw, 2.4rem);
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 7px 12px;
+        font-size: 0.88rem;
+        background: rgba(29, 26, 23, 0.06);
+        color: var(--muted);
+      }
+
+      .chip.critical {
+        background: rgba(145, 45, 31, 0.12);
+        color: var(--critical);
+      }
+
+      .chip.good {
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+
+      .summary {
+        margin: 18px 0 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .progress-panel {
+        margin-top: 22px;
+        padding: 18px;
+        border-radius: 22px;
+        background: var(--card-strong);
+        border: 1px solid rgba(29, 26, 23, 0.08);
+      }
+
+      .progress-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+        margin-bottom: 12px;
+      }
+
+      .progress-top strong {
+        font-size: 1.2rem;
+      }
+
+      .progress-track {
+        position: relative;
+        height: 16px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(29, 26, 23, 0.08);
+      }
+
+      .progress-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #0c7c59 0%, #d28f35 100%);
+        transition: width 240ms ease;
+      }
+
+      .metric-grid {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+
+      .metric {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(29, 26, 23, 0.035);
+      }
+
+      .metric span {
+        display: block;
+      }
+
+      .metric .label {
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .metric .value {
+        margin-top: 8px;
+        font-size: 1.22rem;
+      }
+
+      .change-grid {
+        margin-top: 20px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .change-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 180px) 1fr 1fr;
+        gap: 10px;
+        padding: 14px;
+        border-radius: 18px;
+        background: rgba(29, 26, 23, 0.035);
+        border: 1px solid rgba(29, 26, 23, 0.06);
+      }
+
+      .change-row strong {
+        font-size: 0.92rem;
+      }
+
+      .change-label {
+        color: var(--muted);
+      }
+
+      .change-box {
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.55);
+        line-height: 1.5;
+      }
+
+      .change-box.proposed {
+        background: rgba(12, 124, 89, 0.08);
+      }
+
+      .empty,
+      .error {
+        padding: 22px;
+        color: var(--muted);
+      }
+
+      .footer {
+        margin-top: 20px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .mono {
+        font-family: "SFMono-Regular", "JetBrains Mono", "Menlo", monospace;
+        font-size: 0.92em;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          padding: 18px 14px 48px;
+        }
+
+        .hero,
+        .proposal,
+        .empty,
+        .error {
+          border-radius: 22px;
+        }
+
+        .change-row {
+          grid-template-columns: 1fr;
+        }
+
+        .proposal-head,
+        .progress-top,
+        .section-title {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <p class="eyebrow">TON Mainnet Governance</p>
+        <h1>Config voting, without explorer noise.</h1>
+        <p class="hero-copy">
+          This page reads the real mainnet config contract on every refresh and turns validator weight, rounds,
+          and proposal payloads into plain English.
+        </p>
+        <div class="stats" id="hero-stats"></div>
+        <div class="meta" id="hero-meta"></div>
+        <div class="actions">
+          <button class="button-primary" id="refresh-button" type="button">Refresh now</button>
+          <a class="button-link" id="tonviewer-link" href="https://tonviewer.com/config" target="_blank" rel="noreferrer">Open tonviewer/config</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          <div>
+            <h2>Active proposals</h2>
+          </div>
+          <p id="proposal-counter"></p>
+        </div>
+        <div id="status"></div>
+        <div class="proposal-list" id="proposal-list"></div>
+      </section>
+
+      <p class="footer" id="footer-note"></p>
+    </main>
+
+    <script>
+      const heroStats = document.getElementById('hero-stats');
+      const heroMeta = document.getElementById('hero-meta');
+      const proposalList = document.getElementById('proposal-list');
+      const proposalCounter = document.getElementById('proposal-counter');
+      const statusNode = document.getElementById('status');
+      const footerNote = document.getElementById('footer-note');
+      const refreshButton = document.getElementById('refresh-button');
+      const tonviewerLink = document.getElementById('tonviewer-link');
+
+      let refreshTimer = null;
+      let loading = false;
+
+      refreshButton.addEventListener('click', () => {
+        loadSnapshot();
+      });
+
+      start();
+
+      function start() {
+        loadSnapshot();
+        refreshTimer = window.setInterval(loadSnapshot, 30000);
+      }
+
+      async function loadSnapshot() {
+        if (loading) {
+          return;
+        }
+        loading = true;
+        setStatus('Loading live mainnet data…', 'empty');
+
+        try {
+          const response = await fetch('/api/status', { cache: 'no-store' });
+          const payload = await response.json();
+
+          if (!response.ok) {
+            throw new Error(payload.error || 'Failed to load voting status');
+          }
+
+          renderSnapshot(payload);
+        } catch (error) {
+          setStatus(error.message || 'Failed to load live data', 'error');
+          heroStats.innerHTML = '';
+          heroMeta.innerHTML = '';
+          proposalList.innerHTML = '';
+          proposalCounter.textContent = '';
+          footerNote.textContent = 'The page could not reach the live mainnet data source.';
+        } finally {
+          loading = false;
+        }
+      }
+
+      function renderSnapshot(snapshot) {
+        setStatus('', '');
+        proposalList.innerHTML = '';
+        tonviewerLink.href = snapshot.configContract.tonviewerUrl;
+        proposalCounter.textContent = `${snapshot.proposalCount} live ${snapshot.proposalCount === 1 ? 'proposal' : 'proposals'}`;
+
+        const roundEnds = formatTime(snapshot.validatorRound.currentSetEndsAt);
+        const fetchedAt = formatTime(snapshot.fetchedAt);
+
+        heroStats.innerHTML = [
+          statCard('Live proposals', String(snapshot.proposalCount)),
+          statCard('Validators', `${snapshot.validatorRound.totalValidators}`),
+          statCard('Main validators', `${snapshot.validatorRound.mainValidators}`),
+          statCard('Round threshold', '75%'),
+        ].join('');
+
+        heroMeta.innerHTML = [
+          `<span>Config contract <span class="mono">${snapshot.configContract.friendly}</span></span>`,
+          `<span>Validator round ends ${roundEnds}</span>`,
+          `<span>Last pulled ${fetchedAt}</span>`,
+        ].join('');
+
+        footerNote.textContent =
+          `Normal proposals need ${snapshot.votingRules.normal.min_wins} winning rounds. ` +
+          `Critical proposals need ${snapshot.votingRules.critical.min_wins}. ` +
+          `Data source: live mainnet config contract.`;
+
+        if (!snapshot.proposals.length) {
+          setStatus('No active config proposals are open right now.', 'empty');
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+
+        for (const proposal of snapshot.proposals) {
+          const article = document.createElement('article');
+          article.className = 'proposal';
+          article.innerHTML = renderProposal(proposal, snapshot.validatorRound.totalValidators);
+          fragment.appendChild(article);
+        }
+
+        proposalList.appendChild(fragment);
+      }
+
+      function renderProposal(proposal, totalValidators) {
+        const severityClass = proposal.critical ? 'critical' : 'good';
+        const severityLabel = proposal.critical ? 'Critical' : 'Non-critical';
+        const deadline = formatTime(proposal.expiresAt);
+        const metrics = [
+          metricCard('Voted validators', `${proposal.voterCount} / ${totalValidators}`),
+          metricCard('Weight in favor', `${proposal.yesPercentOfTotal}% of total`),
+          metricCard('Needed this round', `${proposal.neededPercentOfTotal}% more`),
+          metricCard('Round wins', `${proposal.wins} / ${proposal.rule.min_wins}`),
+          metricCard('Losses', `${proposal.losses} / ${proposal.rule.max_losses}`),
+          metricCard('Rounds left', `${proposal.roundsRemaining}`),
+        ].join('');
+
+        const changes = proposal.changeRows
+          ? `
+            <div class="change-grid">
+              ${proposal.changeRows.map((row) => `
+                <div class="change-row">
+                  <div class="change-label"><strong>${escapeHtml(row.label)}</strong></div>
+                  <div class="change-box">${escapeHtml(row.current)}</div>
+                  <div class="change-box proposed">${escapeHtml(row.proposed)}</div>
+                </div>
+              `).join('')}
+            </div>
+          `
+          : '';
+
+        return `
+          <div class="proposal-head">
+            <div>
+              <p class="eyebrow">Param ${proposal.paramId}</p>
+              <h3 class="proposal-title">${escapeHtml(proposal.paramLabel)}</h3>
+            </div>
+            <div class="chips">
+              <span class="chip ${severityClass}">${severityLabel}</span>
+              <span class="chip">${proposal.validatorSetMatchesCurrent ? 'Current validator set' : 'Awaiting set rollover'}</span>
+              <span class="chip">Deadline ${deadline}</span>
+            </div>
+          </div>
+
+          <p class="summary">${escapeHtml(proposal.summary)}</p>
+
+          <div class="progress-panel">
+            <div class="progress-top">
+              <span>Current round progress</span>
+              <strong>${proposal.yesPercentOfThreshold}% of the round threshold</strong>
+            </div>
+            <div class="progress-track">
+              <div class="progress-fill" style="width: ${proposal.progressPercent}%"></div>
+            </div>
+            <div class="metric-grid">${metrics}</div>
+          </div>
+
+          ${changes}
+
+          <div class="meta">
+            <span>Proposal hash <span class="mono">${proposal.hash.slice(0, 16)}…${proposal.hash.slice(-10)}</span></span>
+            <span>Expires ${deadline}</span>
+          </div>
+        `;
+      }
+
+      function statCard(label, value) {
+        return `
+          <div class="stat">
+            <span class="stat-label">${label}</span>
+            <strong class="stat-value">${value}</strong>
+          </div>
+        `;
+      }
+
+      function metricCard(label, value) {
+        return `
+          <div class="metric">
+            <span class="label">${label}</span>
+            <span class="value">${value}</span>
+          </div>
+        `;
+      }
+
+      function setStatus(message, kind) {
+        if (!message) {
+          statusNode.innerHTML = '';
+          statusNode.className = '';
+          return;
+        }
+        statusNode.className = kind;
+        statusNode.textContent = message;
+      }
+
+      function formatTime(input) {
+        const date = typeof input === 'string' ? new Date(input) : new Date(input * 1000);
+        const absolute = new Intl.DateTimeFormat(undefined, {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        }).format(date);
+        const relative = formatRelative(date);
+        return `${absolute} (${relative})`;
+      }
+
+      function formatRelative(date) {
+        const diffMs = date.getTime() - Date.now();
+        const diffMinutes = Math.round(diffMs / 60000);
+        if (Math.abs(diffMinutes) < 1) {
+          return 'now';
+        }
+        if (Math.abs(diffMinutes) < 60) {
+          return relativeLabel(diffMinutes, 'minute');
+        }
+        const diffHours = Math.round(diffMinutes / 60);
+        if (Math.abs(diffHours) < 48) {
+          return relativeLabel(diffHours, 'hour');
+        }
+        const diffDays = Math.round(diffHours / 24);
+        return relativeLabel(diffDays, 'day');
+      }
+
+      function relativeLabel(amount, unit) {
+        const abs = Math.abs(amount);
+        const plural = abs === 1 ? unit : `${unit}s`;
+        return amount > 0 ? `in ${abs} ${plural}` : `${abs} ${plural} ago`;
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+    </script>
+  </body>
+</html>

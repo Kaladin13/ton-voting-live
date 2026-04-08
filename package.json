@@ -1,0 +1,26 @@
+{
+  "name": "config_update_tests",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "npx blueprint build",
+    "test": "jest",
+    "dashboard": "node -r ts-node/register/transpile-only dashboard/server.ts"
+  },
+  "devDependencies": {
+    "@ton/blueprint": "^0.40.0",
+    "@ton/core": "^0.63.0",
+    "@ton/crypto": "^3.3.0",
+    "@ton/sandbox": "^0.41.0",
+    "@ton/test-utils": "^0.11.0",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.3.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@ton-api/client": "^0.4.0",
+    "@ton-api/ton-adapter": "^0.4.1"
+  }
+}
