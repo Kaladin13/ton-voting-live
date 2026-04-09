@@ -490,6 +490,65 @@
         color: var(--muted);
       }
 
+      .empty h3 {
+        margin: 0 0 10px;
+        font-size: 1.6rem;
+        color: var(--ink);
+      }
+
+      .empty p {
+        margin: 0;
+        line-height: 1.7;
+      }
+
+      .empty-grid {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+      }
+
+      .empty-metric {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(29, 26, 23, 0.035);
+      }
+
+      .empty-metric span {
+        display: block;
+      }
+
+      .empty-metric .label {
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .empty-metric .value {
+        margin-top: 8px;
+        font-size: 1.1rem;
+        color: var(--ink);
+      }
+
+      .resolved-card {
+        margin-top: 18px;
+        padding: 18px;
+        border-radius: 22px;
+        background: rgba(12, 124, 89, 0.08);
+        border: 1px solid rgba(12, 124, 89, 0.16);
+      }
+
+      .resolved-card h4 {
+        margin: 10px 0 0;
+        font-size: 1.2rem;
+        color: var(--ink);
+      }
+
+      .resolved-card p + p {
+        margin-top: 10px;
+      }
+
       .footer {
         margin-top: 20px;
         color: var(--muted);
@@ -755,7 +814,7 @@
           `Data source: live mainnet config contract.`;
 
         if (!snapshot.proposals.length) {
-          setStatus('No active config proposals are open right now.', 'empty');
+          renderEmptyState(snapshot, roundEnds);
           return;
         }
 
@@ -769,6 +828,50 @@
         }
 
         proposalList.appendChild(fragment);
+      }
+
+      function renderEmptyState(snapshot, roundEnds) {
+        const resolvedCard = snapshot.resolvedProposal
+          ? `
+            <div class="resolved-card">
+              <div class="chips">
+                <span class="chip good">Accepted</span>
+                <span class="chip">Param ${snapshot.resolvedProposal.paramId}</span>
+              </div>
+              <h4>${escapeHtml(snapshot.resolvedProposal.paramLabel)}</h4>
+              <p>${escapeHtml(snapshot.resolvedProposal.summary)}</p>
+              <p>${escapeHtml(snapshot.resolvedProposal.closedBecause)}</p>
+              <div class="change-grid">
+                ${snapshot.resolvedProposal.changeRows.map((row) => `
+                  <div class="change-row">
+                    <div class="change-label"><strong>${escapeHtml(row.label)}</strong></div>
+                    <div class="change-box">${escapeHtml(row.current)}</div>
+                    <div class="change-box proposed">${escapeHtml(row.proposed)}</div>
+                  </div>
+                `).join('')}
+              </div>
+              <div class="meta">
+                <span>Proposal hash <span class="mono">${snapshot.resolvedProposal.hash.slice(0, 16)}…${snapshot.resolvedProposal.hash.slice(-10)}</span></span>
+              </div>
+            </div>
+          `
+          : '';
+
+        setStatus('', '');
+        statusNode.className = 'empty';
+        statusNode.innerHTML = `
+          <h3>No active config proposals right now</h3>
+          <p>The dashboard is live. TON mainnet currently has zero open config proposals, so there are no active voting cards to show.</p>
+          <div class="empty-grid">
+            ${emptyMetric('Live proposals', String(snapshot.proposalCount))}
+            ${emptyMetric('Validators', `${snapshot.validatorRound.totalValidators}`)}
+            ${emptyMetric('Main validators', `${snapshot.validatorRound.mainValidators}`)}
+            ${emptyMetric('Round ends', roundEnds)}
+            ${emptyMetric('Normal wins needed', `${snapshot.votingRules.normal.min_wins}`)}
+            ${emptyMetric('Critical wins needed', `${snapshot.votingRules.critical.min_wins}`)}
+          </div>
+          ${resolvedCard}
+        `;
       }
 
       function renderProposal(proposal, totalValidators) {
@@ -856,6 +959,15 @@
       function metricCard(label, value) {
         return `
           <div class="metric">
+            <span class="label">${label}</span>
+            <span class="value">${value}</span>
+          </div>
+        `;
+      }
+
+      function emptyMetric(label, value) {
+        return `
+          <div class="empty-metric">
             <span class="label">${label}</span>
             <span class="value">${value}</span>
           </div>

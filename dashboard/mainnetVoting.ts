@@ -41,6 +41,16 @@ type ChangeRow = {
     proposed: string
 };
 
+type ResolvedProposal = {
+    hash: string,
+    paramId: number,
+    paramLabel: string,
+    status: 'accepted',
+    summary: string,
+    closedBecause: string,
+    changeRows: ChangeRow[]
+};
+
 type VsetEntry = {
     idx: number,
     weight: bigint
@@ -65,6 +75,7 @@ export type VotingSnapshot = {
     elections: ReturnType<typeof getElectionsConf>,
     validatorLimits: ReturnType<typeof getValidatorsConf>,
     proposalCount: number,
+    resolvedProposal: ResolvedProposal | null,
     proposals: Array<{
         hash: string,
         paramId: number,
@@ -121,6 +132,53 @@ const tonApi = new TonApiClient({ baseUrl: 'https://tonapi.io' });
 const adapter = new ContractAdapter(tonApi);
 const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
+const LAST_KNOWN_PROPOSAL = {
+    hash: 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f',
+    paramId: 30,
+    paramLabel: 'Consensus config',
+    previousValue: {
+        hasMc: false,
+        hasShard: true,
+        mc: null,
+        shard: {
+            version: 'simplex_config_v2' as const,
+            flags: 0,
+            use_quic: false,
+            slots_per_leader_window: 4,
+            noncritical: {
+                target_rate_ms: 800,
+                first_block_timeout_ms: 1600
+            }
+        }
+    },
+    acceptedValue: {
+        hasMc: true,
+        hasShard: true,
+        mc: {
+            version: 'simplex_config_v2' as const,
+            flags: 0,
+            use_quic: true,
+            slots_per_leader_window: 4,
+            noncritical: {
+                target_rate_ms: 400,
+                first_block_timeout_ms: 700,
+                min_block_interval_ms: 300
+            }
+        },
+        shard: {
+            version: 'simplex_config_v2' as const,
+            flags: 0,
+            use_quic: true,
+            slots_per_leader_window: 4,
+            noncritical: {
+                target_rate_ms: 400,
+                first_block_timeout_ms: 700,
+                min_block_interval_ms: 300
+            }
+        }
+    }
+};
+
 export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const cfg = await config.getConfig();
     const proposals = await config.getListedProposals();
@@ -131,6 +189,8 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const currentVsetHash = currentVsetCell.hash().toString('hex');
     const currentVset = parseVsetWithIndexes(currentVsetCell);
     const thresholdWeight = (currentVset.total_weight * 3n) / 4n;
+    const currentConsensus = parseNewConsensusConfigAll(getRequiredParam(cfg, 30));
+    const activeProposalHashes = new Set(proposals.map((proposal) => toHex(proposal.proposalHash)));
 
     return {
         fetchedAt: new Date().toISOString(),
@@ -151,6 +211,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
         elections,
         validatorLimits,
         proposalCount: proposals.length,
+        resolvedProposal: buildResolvedProposal(activeProposalHashes, currentConsensus),
         proposals: proposals.map((proposal) => {
             const yesWeight = thresholdWeight - proposal.weight_remaining;
             const neededWeight = proposal.weight_remaining > 0n ? proposal.weight_remaining : 0n;
@@ -194,6 +255,26 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
                 changeRows
             };
         })
+    };
+}
+
+function buildResolvedProposal(activeProposalHashes: Set<string>, currentConsensus: ConsensusConfigAll): ResolvedProposal | null {
+    if (activeProposalHashes.has(LAST_KNOWN_PROPOSAL.hash)) {
+        return null;
+    }
+
+    if (!consensusConfigAllEquals(currentConsensus, LAST_KNOWN_PROPOSAL.acceptedValue)) {
+        return null;
+    }
+
+    return {
+        hash: LAST_KNOWN_PROPOSAL.hash,
+        paramId: LAST_KNOWN_PROPOSAL.paramId,
+        paramLabel: LAST_KNOWN_PROPOSAL.paramLabel,
+        status: 'accepted',
+        summary: 'This proposal was accepted and applied on-chain. Param 30 now matches the payload that previously appeared in active voting.',
+        closedBecause: 'The proposal is gone from the active get-method list, and the live config value now matches its proposed state.',
+        changeRows: buildConsensusChangeRows(LAST_KNOWN_PROPOSAL.previousValue, LAST_KNOWN_PROPOSAL.acceptedValue)
     };
 }
 
@@ -313,6 +394,40 @@ function buildConsensusChangeRows(current: ConsensusConfigAll | null, proposed: 
             proposed: describeConsensusSide(proposed.shard)
         }
     ];
+}
+
+function consensusConfigAllEquals(left: ConsensusConfigAll | null, right: ConsensusConfigAll | null) {
+    if (!left || !right) {
+        return left === right;
+    }
+
+    return left.hasMc === right.hasMc
+        && left.hasShard === right.hasShard
+        && consensusConfigEquals(left.mc, right.mc)
+        && consensusConfigEquals(left.shard, right.shard);
+}
+
+function consensusConfigEquals(left: ConsensusConfig | null, right: ConsensusConfig | null) {
+    if (!left || !right) {
+        return left === right;
+    }
+
+    return left.version === right.version
+        && left.flags === right.flags
+        && left.use_quic === right.use_quic
+        && left.slots_per_leader_window === right.slots_per_leader_window
+        && recordEquals(left.noncritical, right.noncritical);
+}
+
+function recordEquals(left: Record<string, number>, right: Record<string, number>) {
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+
+    if (leftKeys.length !== rightKeys.length) {
+        return false;
+    }
+
+    return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
 }
 
 function describeConsensusSide(side: ConsensusConfig | null): string {
