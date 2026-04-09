@@ -35,6 +35,31 @@ type ConsensusConfigAll = {
     shard: ConsensusConfig | null
 };
 
+type BlockCreateFees = {
+    masterchain_block_fee: bigint,
+    basechain_block_fee: bigint
+};
+
+type ElectionsTiming = {
+    validators_elected_for: number,
+    elections_start_before: number,
+    elections_end_before: number,
+    stake_held_for: number
+};
+
+type ValidatorLimitsPreview = {
+    max_validators: number,
+    max_main_validators: number,
+    min_validators: number
+};
+
+type StakeLimitsPreview = {
+    min_stake: bigint,
+    max_stake: bigint,
+    min_total_stake: bigint,
+    max_stake_factor: number
+};
+
 type ChangeRow = {
     label: string,
     current: string,
@@ -122,8 +147,10 @@ const NONCRITICAL_PARAM_NAMES: Record<number, string> = {
 };
 const PARAM_LABELS: Record<number, string> = {
     11: 'Voting rules',
+    14: 'Block reward',
     15: 'Election timing',
     16: 'Validator limits',
+    17: 'Stake limits',
     30: 'Consensus config',
     34: 'Current validator set'
 };
@@ -216,9 +243,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
             const yesWeight = thresholdWeight - proposal.weight_remaining;
             const neededWeight = proposal.weight_remaining > 0n ? proposal.weight_remaining : 0n;
             const rule = proposal.critical ? voteSetup.critical : voteSetup.normal;
-            const changeRows = proposal.param_id === 30
-                ? buildConsensusChangeRows(cfg.get(30) ? parseNewConsensusConfigAll(getRequiredParam(cfg, 30)) : null, parseNewConsensusConfigAll(proposal.value))
-                : null;
+            const changeRows = buildConfigChangeRows(proposal.param_id, cfg.get(proposal.param_id), proposal.value);
 
             return {
                 hash: toHex(proposal.proposalHash),
@@ -278,6 +303,30 @@ function buildResolvedProposal(activeProposalHashes: Set<string>, currentConsens
     };
 }
 
+function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {
+    try {
+        switch (paramId) {
+            case 11:
+                return buildVoteSetupChangeRows(current ? parseVoteSetup(current) : null, parseVoteSetup(proposed));
+            case 14:
+                return buildBlockCreateFeeChangeRows(current ? parseBlockCreateFees(current) : null, parseBlockCreateFees(proposed));
+            case 15:
+                return buildElectionTimingChangeRows(current ? parseElectionsTiming(current) : null, parseElectionsTiming(proposed));
+            case 16:
+                return buildValidatorLimitsChangeRows(current ? parseValidatorLimits(current) : null, parseValidatorLimits(proposed));
+            case 17:
+                return buildStakeLimitChangeRows(current ? parseStakeLimits(current) : null, parseStakeLimits(proposed));
+            case 30:
+                return buildConsensusChangeRows(current ? parseNewConsensusConfigAll(current) : null, parseNewConsensusConfigAll(proposed));
+            default:
+                return buildFallbackChangeRows(current ?? null, proposed);
+        }
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : 'Unknown decode error';
+        return buildFallbackChangeRows(current ?? null, proposed, `Structured preview unavailable: ${reason}`);
+    }
+}
+
 function getRequiredParam(configDict: MapLikeConfig, id: number): Cell {
     const value = configDict.get(id);
     if (!value) {
@@ -317,6 +366,48 @@ function parseProposalSetup(cell: Cell): ProposalSetup {
         max_store_sec: slice.loadUint(32),
         bit_price: slice.loadUint(32),
         cell_price: slice.loadUint(32)
+    };
+}
+
+function parseBlockCreateFees(cell: Cell): BlockCreateFees {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(8);
+    if (tag !== 0x6b) {
+        throw new Error(`Unexpected config param 14 tag: ${tag}`);
+    }
+
+    return {
+        masterchain_block_fee: slice.loadCoins(),
+        basechain_block_fee: slice.loadCoins()
+    };
+}
+
+function parseElectionsTiming(cell: Cell): ElectionsTiming {
+    const slice = cell.beginParse();
+    return {
+        validators_elected_for: slice.loadUint(32),
+        elections_start_before: slice.loadUint(32),
+        elections_end_before: slice.loadUint(32),
+        stake_held_for: slice.loadUint(32)
+    };
+}
+
+function parseValidatorLimits(cell: Cell): ValidatorLimitsPreview {
+    const slice = cell.beginParse();
+    return {
+        max_validators: slice.loadUint(16),
+        max_main_validators: slice.loadUint(16),
+        min_validators: slice.loadUint(16)
+    };
+}
+
+function parseStakeLimits(cell: Cell): StakeLimitsPreview {
+    const slice = cell.beginParse();
+    return {
+        min_stake: slice.loadCoins(),
+        max_stake: slice.loadCoins(),
+        min_total_stake: slice.loadCoins(),
+        max_stake_factor: slice.loadUint(32)
     };
 }
 
@@ -396,6 +487,132 @@ function buildConsensusChangeRows(current: ConsensusConfigAll | null, proposed: 
     ];
 }
 
+function buildVoteSetupChangeRows(current: VoteSetup | null, proposed: VoteSetup): ChangeRow[] {
+    return [
+        {
+            label: 'Normal proposal rules',
+            current: current ? describeProposalSetup(current.normal) : 'Param not set',
+            proposed: describeProposalSetup(proposed.normal)
+        },
+        {
+            label: 'Critical proposal rules',
+            current: current ? describeProposalSetup(current.critical) : 'Param not set',
+            proposed: describeProposalSetup(proposed.critical)
+        }
+    ];
+}
+
+function buildBlockCreateFeeChangeRows(current: BlockCreateFees | null, proposed: BlockCreateFees): ChangeRow[] {
+    return [
+        {
+            label: 'Masterchain block reward',
+            current: current ? formatTonAmount(current.masterchain_block_fee) : 'Param not set',
+            proposed: formatTonAmount(proposed.masterchain_block_fee)
+        },
+        {
+            label: 'Basechain block reward',
+            current: current ? formatTonAmount(current.basechain_block_fee) : 'Param not set',
+            proposed: formatTonAmount(proposed.basechain_block_fee)
+        }
+    ];
+}
+
+function buildElectionTimingChangeRows(current: ElectionsTiming | null, proposed: ElectionsTiming): ChangeRow[] {
+    return [
+        {
+            label: 'Validator set lifetime',
+            current: current ? formatDuration(current.validators_elected_for) : 'Param not set',
+            proposed: formatDuration(proposed.validators_elected_for)
+        },
+        {
+            label: 'Elections start before round end',
+            current: current ? formatDuration(current.elections_start_before) : 'Param not set',
+            proposed: formatDuration(proposed.elections_start_before)
+        },
+        {
+            label: 'Elections close before round end',
+            current: current ? formatDuration(current.elections_end_before) : 'Param not set',
+            proposed: formatDuration(proposed.elections_end_before)
+        },
+        {
+            label: 'Stake hold period',
+            current: current ? formatDuration(current.stake_held_for) : 'Param not set',
+            proposed: formatDuration(proposed.stake_held_for)
+        }
+    ];
+}
+
+function buildValidatorLimitsChangeRows(current: ValidatorLimitsPreview | null, proposed: ValidatorLimitsPreview): ChangeRow[] {
+    return [
+        {
+            label: 'Max validators',
+            current: current ? String(current.max_validators) : 'Param not set',
+            proposed: String(proposed.max_validators)
+        },
+        {
+            label: 'Max main validators',
+            current: current ? String(current.max_main_validators) : 'Param not set',
+            proposed: String(proposed.max_main_validators)
+        },
+        {
+            label: 'Min validators',
+            current: current ? String(current.min_validators) : 'Param not set',
+            proposed: String(proposed.min_validators)
+        }
+    ];
+}
+
+function buildStakeLimitChangeRows(current: StakeLimitsPreview | null, proposed: StakeLimitsPreview): ChangeRow[] {
+    return [
+        {
+            label: 'Minimum stake',
+            current: current ? formatTonAmount(current.min_stake) : 'Param not set',
+            proposed: formatTonAmount(proposed.min_stake)
+        },
+        {
+            label: 'Maximum stake',
+            current: current ? formatTonAmount(current.max_stake) : 'Param not set',
+            proposed: formatTonAmount(proposed.max_stake)
+        },
+        {
+            label: 'Minimum total stake',
+            current: current ? formatTonAmount(current.min_total_stake) : 'Param not set',
+            proposed: formatTonAmount(proposed.min_total_stake)
+        },
+        {
+            label: 'Max stake factor',
+            current: current ? String(current.max_stake_factor) : 'Param not set',
+            proposed: String(proposed.max_stake_factor)
+        }
+    ];
+}
+
+function buildFallbackChangeRows(current: Cell | null, proposed: Cell, note?: string): ChangeRow[] {
+    const rows: ChangeRow[] = [];
+
+    if (note) {
+        rows.push({
+            label: 'Preview status',
+            current: 'No parser for this config payload',
+            proposed: note
+        });
+    }
+
+    rows.push({
+        label: 'Raw cell hash',
+        current: current ? current.hash().toString('hex') : 'Param not set',
+        proposed: proposed.hash().toString('hex')
+    });
+
+    rows.push({
+        label: 'Serialized size',
+        current: current ? `${current.toBoc().length} bytes` : 'Param not set',
+        proposed: `${proposed.toBoc().length} bytes`
+    });
+
+    return rows;
+}
+
 function consensusConfigAllEquals(left: ConsensusConfigAll | null, right: ConsensusConfigAll | null) {
     if (!left || !right) {
         return left === right;
@@ -451,6 +668,50 @@ function describeConsensusSide(side: ConsensusConfig | null): string {
     }
 
     return details.join(', ');
+}
+
+function describeProposalSetup(setup: ProposalSetup): string {
+    return `${setup.min_wins} wins, up to ${setup.max_tot_rounds} rounds, max ${setup.max_losses} losses, keep ${formatDuration(setup.min_store_sec)} to ${formatDuration(setup.max_store_sec)}`;
+}
+
+function formatTonAmount(value: bigint): string {
+    const negative = value < 0n;
+    const absolute = negative ? -value : value;
+    const whole = absolute / 1_000_000_000n;
+    const fraction = (absolute % 1_000_000_000n).toString().padStart(9, '0').replace(/0+$/, '');
+    const rendered = fraction ? `${whole.toString()}.${fraction}` : whole.toString();
+    return `${negative ? '-' : ''}${rendered} TON`;
+}
+
+function formatDuration(seconds: number): string {
+    if (seconds === 0) {
+        return '0s';
+    }
+
+    const parts: string[] = [];
+    let remaining = seconds;
+    const units: Array<[string, number]> = [
+        ['d', 86400],
+        ['h', 3600],
+        ['m', 60],
+        ['s', 1]
+    ];
+
+    for (const [suffix, unitSeconds] of units) {
+        if (remaining < unitSeconds) {
+            continue;
+        }
+
+        const amount = Math.floor(remaining / unitSeconds);
+        remaining %= unitSeconds;
+        parts.push(`${amount}${suffix}`);
+
+        if (parts.length === 2) {
+            break;
+        }
+    }
+
+    return parts.join(' ');
 }
 
 function buildSummary(args: {
