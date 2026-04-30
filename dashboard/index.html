@@ -570,6 +570,7 @@
         border-radius: 14px;
         background: rgba(255, 255, 255, 0.55);
         line-height: 1.5;
+        white-space: pre-line;
       }
 
       .change-box.proposed {
@@ -750,7 +751,7 @@
       const refreshButton = document.getElementById('refresh-button');
       const tonviewerLink = document.getElementById('tonviewer-link');
       const MTONGA_PLAN_URL = 'https://t.me/durov/482';
-      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v5';
+      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v7';
       const SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 
       let refreshTimer = null;

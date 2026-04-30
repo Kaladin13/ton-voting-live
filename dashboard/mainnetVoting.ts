@@ -226,9 +226,11 @@ const adapter = new ContractAdapter(tonApi);
 const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
 const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
-const MSG_FWDDING_PARAM_24_HASH = '5ef02b3ad2eb630e050850e88b9eb025a683f73d1f154ecef0a9e8168606d92a';
 const MTONGA_PROPOSAL_HASHES = [
     LAST_KNOWN_PROPOSAL_HASH,
+    'b9fc3e68609931713760d0596a3482d9a084c90062d697aee7b420fc1b32a6e5',
+    '5ef02b3ad2eb630e050850e88b9eb025a683f73d1f154ecef0a9e8168606d92a',
+    '8fb9e0904ed7fc276e2d43e559a6a502f8295a36331e15162207884d207f5685'
 ];
 const MTONGA_PROPOSAL_HASH_SET = new Set(MTONGA_PROPOSAL_HASHES);
 
@@ -1021,7 +1023,7 @@ function describeStoragePriceSchedule(entries: StoragePriceEntry[], masterchain:
             const cellPrice = masterchain ? entry.mc_cell_price_ps : entry.cell_price_ps;
             return `${formatStoragePeriodStart(entry.utime_since)}: ${formatStoragePrice(bitPrice, 'bit')}, ${formatStoragePrice(cellPrice, 'cell')}`;
         })
-        .join('; ');
+        .join('\n');
 }
 
 function formatStoragePeriodStart(unixTime: number) {
