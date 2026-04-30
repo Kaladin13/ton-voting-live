@@ -934,6 +934,12 @@
         color: var(--accent);
       }
 
+      .made-by span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
       .telegram-icon {
         color: #229ed9;
       }
@@ -1163,6 +1169,11 @@
         background: var(--accent-soft);
       }
 
+      .change-box .change-prefix {
+        font-size: inherit;
+        font-weight: 700;
+      }
+
       .copy-hash {
         min-height: 34px;
         padding: 6px 11px;
@@ -1348,8 +1359,41 @@
           text-overflow: ellipsis;
         }
 
+        .made-by strong {
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
         .footer {
           padding: 28px 16px 36px;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .made-by {
+          gap: 6px;
+          max-width: calc(100vw - 176px);
+          min-height: 34px;
+          padding: 6px 10px;
+          font-size: 14px;
+          line-height: 18px;
+        }
+
+        .made-by span {
+          font-size: 0;
+        }
+
+        .made-by strong {
+          display: inline-block;
+          max-width: 100%;
+          font-size: 14px;
+          line-height: 18px;
+          vertical-align: top;
+        }
+
+        .telegram-icon {
+          width: 17px;
+          height: 17px;
         }
       }
     </style>
@@ -1663,8 +1707,8 @@
               ${proposal.changeRows.map((row) => `
                 <div class="change-row">
                   <div class="change-label"><strong>${escapeHtml(row.label)}</strong></div>
-                  <div class="change-box">${escapeHtml(row.current)}</div>
-                  <div class="change-box proposed">${escapeHtml(row.proposed)}</div>
+                  <div class="change-box">${renderChangeValue(row.current)}</div>
+                  <div class="change-box proposed">${renderChangeValue(row.proposed)}</div>
                 </div>
               `).join('')}
             </div>
@@ -1706,8 +1750,8 @@
               ${proposal.changeRows.map((row) => `
                 <div class="change-row">
                   <div class="change-label"><strong>${escapeHtml(row.label)}</strong></div>
-                  <div class="change-box">${escapeHtml(row.current)}</div>
-                  <div class="change-box proposed">${escapeHtml(row.proposed)}</div>
+                  <div class="change-box">${renderChangeValue(row.current)}</div>
+                  <div class="change-box proposed">${renderChangeValue(row.proposed)}</div>
                 </div>
               `).join('')}
             </div>
@@ -1901,6 +1945,20 @@
         }
 
         return `<span class="chip independent">${label}</span>`;
+      }
+
+      function renderChangeValue(value) {
+        return String(value)
+          .split('\n')
+          .map((line) => {
+            const match = line.match(/^(from .+?)(: .*)$/);
+            if (!match) {
+              return escapeHtml(line);
+            }
+
+            return `<strong class="change-prefix">${escapeHtml(match[1])}</strong>${escapeHtml(match[2])}`;
+          })
+          .join('\n');
       }
 
       function escapeHtml(value) {
