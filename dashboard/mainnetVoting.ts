@@ -1,6 +1,6 @@
 import { TonApiClient } from '@ton-api/client';
 import { ContractAdapter } from '@ton-api/ton-adapter';
-import { Address, Cell, Dictionary, Slice } from '@ton/core';
+import { Address, Cell, Dictionary, DictionaryValue, Slice } from '@ton/core';
 import { Config } from '../wrappers/Config';
 import { getElectionsConf, getValidatorsConf, ValidatorDescriptionValue } from '../wrappers/ValidatorUtils';
 
@@ -59,6 +59,48 @@ type StakeLimitsPreview = {
     min_total_stake: bigint,
     max_stake_factor: number
 };
+
+type StoragePrices = {
+    utime_since: number,
+    bit_price_ps: bigint,
+    cell_price_ps: bigint,
+    mc_bit_price_ps: bigint,
+    mc_cell_price_ps: bigint
+};
+
+type StoragePriceEntry = StoragePrices & {
+    key: number
+};
+
+type GasPrices = {
+    kind: 'gas_prices',
+    gas_price: bigint,
+    gas_limit: bigint,
+    gas_credit: bigint,
+    block_gas_limit: bigint,
+    freeze_due_limit: bigint,
+    delete_due_limit: bigint
+};
+
+type GasPricesExt = {
+    kind: 'gas_prices_ext',
+    gas_price: bigint,
+    gas_limit: bigint,
+    special_gas_limit: bigint,
+    gas_credit: bigint,
+    block_gas_limit: bigint,
+    freeze_due_limit: bigint,
+    delete_due_limit: bigint
+};
+
+type GasFlatPrefix = {
+    kind: 'gas_flat_pfx',
+    flat_gas_limit: bigint,
+    flat_gas_price: bigint,
+    other: GasLimitsPrices
+};
+
+type GasLimitsPrices = GasPrices | GasPricesExt | GasFlatPrefix;
 
 type MsgForwardPrices = {
     lump_price: bigint,
@@ -170,6 +212,9 @@ const PARAM_LABELS: Record<number, string> = {
     15: 'Election timing',
     16: 'Validator limits',
     17: 'Stake limits',
+    18: 'Storage prices',
+    20: 'Masterchain gas prices',
+    21: 'Basechain gas prices',
     24: 'Masterchain message prices',
     25: 'Basechain message prices',
     30: 'Consensus config',
@@ -181,8 +226,9 @@ const adapter = new ContractAdapter(tonApi);
 const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
 const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
+const MSG_FWDDING_PARAM_24_HASH = '5ef02b3ad2eb630e050850e88b9eb025a683f73d1f154ecef0a9e8168606d92a';
 const MTONGA_PROPOSAL_HASHES = [
-    LAST_KNOWN_PROPOSAL_HASH
+    LAST_KNOWN_PROPOSAL_HASH,
 ];
 const MTONGA_PROPOSAL_HASH_SET = new Set(MTONGA_PROPOSAL_HASHES);
 
@@ -404,6 +450,11 @@ function buildConfigChangeRows(paramId: number, current: Cell | undefined, propo
                 return buildValidatorLimitsChangeRows(current ? parseValidatorLimits(current) : null, parseValidatorLimits(proposed));
             case 17:
                 return buildStakeLimitChangeRows(current ? parseStakeLimits(current) : null, parseStakeLimits(proposed));
+            case 18:
+                return buildStoragePriceChangeRows(current ? parseStoragePrices(current) : null, parseStoragePrices(proposed));
+            case 20:
+            case 21:
+                return buildGasLimitPriceChangeRows(current ? parseGasLimitsPrices(current) : null, parseGasLimitsPrices(proposed));
             case 24:
             case 25:
                 return buildMsgForwardPriceChangeRows(current ? parseMsgForwardPrices(current) : null, parseMsgForwardPrices(proposed));
@@ -500,6 +551,76 @@ function parseStakeLimits(cell: Cell): StakeLimitsPreview {
         min_total_stake: slice.loadCoins(),
         max_stake_factor: slice.loadUint(32)
     };
+}
+
+const StoragePricesValue: DictionaryValue<StoragePrices> = {
+    serialize: () => {
+        throw new Error('StoragePrices serialization is not used');
+    },
+    parse: (source) => {
+        const tag = source.loadUint(8);
+        if (tag !== 0xcc) {
+            throw new Error(`Unexpected storage prices tag: ${tag}`);
+        }
+
+        return {
+            utime_since: source.loadUint(32),
+            bit_price_ps: source.loadUintBig(64),
+            cell_price_ps: source.loadUintBig(64),
+            mc_bit_price_ps: source.loadUintBig(64),
+            mc_cell_price_ps: source.loadUintBig(64)
+        };
+    }
+};
+
+function parseStoragePrices(cell: Cell): StoragePriceEntry[] {
+    return Array.from(
+        cell.beginParse().loadDictDirect(Dictionary.Keys.Uint(32), StoragePricesValue),
+        ([key, value]) => ({ key, ...value })
+    ).sort((left, right) => left.utime_since - right.utime_since);
+}
+
+function parseGasLimitsPrices(cell: Cell): GasLimitsPrices {
+    return parseGasLimitsPricesSlice(cell.beginParse());
+}
+
+function parseGasLimitsPricesSlice(slice: Slice): GasLimitsPrices {
+    const tag = slice.loadUint(8);
+    if (tag === 0xd1) {
+        return {
+            kind: 'gas_flat_pfx',
+            flat_gas_limit: slice.loadUintBig(64),
+            flat_gas_price: slice.loadUintBig(64),
+            other: parseGasLimitsPricesSlice(slice)
+        };
+    }
+
+    if (tag === 0xdd) {
+        return {
+            kind: 'gas_prices',
+            gas_price: slice.loadUintBig(64),
+            gas_limit: slice.loadUintBig(64),
+            gas_credit: slice.loadUintBig(64),
+            block_gas_limit: slice.loadUintBig(64),
+            freeze_due_limit: slice.loadUintBig(64),
+            delete_due_limit: slice.loadUintBig(64)
+        };
+    }
+
+    if (tag === 0xde) {
+        return {
+            kind: 'gas_prices_ext',
+            gas_price: slice.loadUintBig(64),
+            gas_limit: slice.loadUintBig(64),
+            special_gas_limit: slice.loadUintBig(64),
+            gas_credit: slice.loadUintBig(64),
+            block_gas_limit: slice.loadUintBig(64),
+            freeze_due_limit: slice.loadUintBig(64),
+            delete_due_limit: slice.loadUintBig(64)
+        };
+    }
+
+    throw new Error(`Unexpected gas prices tag: ${tag}`);
 }
 
 function parseMsgForwardPrices(cell: Cell): MsgForwardPrices {
@@ -695,6 +816,82 @@ function buildStakeLimitChangeRows(current: StakeLimitsPreview | null, proposed:
     ];
 }
 
+function buildStoragePriceChangeRows(current: StoragePriceEntry[] | null, proposed: StoragePriceEntry[]): ChangeRow[] {
+    return [
+        {
+            label: 'Storage price periods',
+            current: current ? formatPlural(current.length, 'period') : 'Param not set',
+            proposed: formatPlural(proposed.length, 'period')
+        },
+        {
+            label: 'Basechain storage prices',
+            current: current ? describeStoragePriceSchedule(current, false) : 'Param not set',
+            proposed: describeStoragePriceSchedule(proposed, false)
+        },
+        {
+            label: 'Masterchain storage prices',
+            current: current ? describeStoragePriceSchedule(current, true) : 'Param not set',
+            proposed: describeStoragePriceSchedule(proposed, true)
+        }
+    ];
+}
+
+function buildGasLimitPriceChangeRows(current: GasLimitsPrices | null, proposed: GasLimitsPrices): ChangeRow[] {
+    const currentFlat = current ? getGasFlatPrefix(current) : null;
+    const proposedFlat = getGasFlatPrefix(proposed);
+    const currentPrices = current ? unwrapGasLimitsPrices(current) : null;
+    const proposedPrices = unwrapGasLimitsPrices(proposed);
+    const rows: ChangeRow[] = [];
+
+    if (currentFlat || proposedFlat) {
+        rows.push({
+            label: 'Flat gas package',
+            current: currentFlat ? describeGasFlatPrefix(currentFlat) : 'Not set',
+            proposed: proposedFlat ? describeGasFlatPrefix(proposedFlat) : 'Not set'
+        });
+    }
+
+    rows.push(
+        {
+            label: 'Gas price',
+            current: currentPrices ? formatScaledNanotonPerUnit(currentPrices.gas_price, 'gas') : 'Param not set',
+            proposed: formatScaledNanotonPerUnit(proposedPrices.gas_price, 'gas')
+        },
+        {
+            label: 'Transaction gas limit',
+            current: currentPrices ? formatCount(currentPrices.gas_limit) : 'Param not set',
+            proposed: formatCount(proposedPrices.gas_limit)
+        },
+        {
+            label: 'Special contract gas limit',
+            current: currentPrices ? describeSpecialGasLimit(currentPrices) : 'Param not set',
+            proposed: describeSpecialGasLimit(proposedPrices)
+        },
+        {
+            label: 'External message gas credit',
+            current: currentPrices ? formatCount(currentPrices.gas_credit) : 'Param not set',
+            proposed: formatCount(proposedPrices.gas_credit)
+        },
+        {
+            label: 'Block gas limit',
+            current: currentPrices ? formatCount(currentPrices.block_gas_limit) : 'Param not set',
+            proposed: formatCount(proposedPrices.block_gas_limit)
+        },
+        {
+            label: 'Freeze due limit',
+            current: currentPrices ? formatNanotonAmount(currentPrices.freeze_due_limit) : 'Param not set',
+            proposed: formatNanotonAmount(proposedPrices.freeze_due_limit)
+        },
+        {
+            label: 'Delete due limit',
+            current: currentPrices ? formatNanotonAmount(currentPrices.delete_due_limit) : 'Param not set',
+            proposed: formatNanotonAmount(proposedPrices.delete_due_limit)
+        }
+    );
+
+    return rows;
+}
+
 function buildMsgForwardPriceChangeRows(current: MsgForwardPrices | null, proposed: MsgForwardPrices): ChangeRow[] {
     return [
         {
@@ -817,6 +1014,43 @@ function describeProposalSetup(setup: ProposalSetup): string {
     return `${setup.min_wins} wins, up to ${setup.max_tot_rounds} rounds, max ${setup.max_losses} losses, keep ${formatDuration(setup.min_store_sec)} to ${formatDuration(setup.max_store_sec)}`;
 }
 
+function describeStoragePriceSchedule(entries: StoragePriceEntry[], masterchain: boolean) {
+    return entries
+        .map((entry) => {
+            const bitPrice = masterchain ? entry.mc_bit_price_ps : entry.bit_price_ps;
+            const cellPrice = masterchain ? entry.mc_cell_price_ps : entry.cell_price_ps;
+            return `${formatStoragePeriodStart(entry.utime_since)}: ${formatStoragePrice(bitPrice, 'bit')}, ${formatStoragePrice(cellPrice, 'cell')}`;
+        })
+        .join('; ');
+}
+
+function formatStoragePeriodStart(unixTime: number) {
+    if (unixTime === 0) {
+        return 'from genesis';
+    }
+    return `from ${formatUnixUtc(unixTime)}`;
+}
+
+function formatStoragePrice(value: bigint, unit: string) {
+    return `${formatCount(value)} nanoton/${unit}/65536s`;
+}
+
+function describeGasFlatPrefix(config: GasFlatPrefix) {
+    return `${formatCount(config.flat_gas_limit)} gas for ${formatNanotonAmount(config.flat_gas_price)}`;
+}
+
+function getGasFlatPrefix(config: GasLimitsPrices): GasFlatPrefix | null {
+    return config.kind === 'gas_flat_pfx' ? config : null;
+}
+
+function unwrapGasLimitsPrices(config: GasLimitsPrices): GasPrices | GasPricesExt {
+    return config.kind === 'gas_flat_pfx' ? unwrapGasLimitsPrices(config.other) : config;
+}
+
+function describeSpecialGasLimit(config: GasPrices | GasPricesExt) {
+    return config.kind === 'gas_prices_ext' ? formatCount(config.special_gas_limit) : 'Not set';
+}
+
 function formatTonAmount(value: bigint): string {
     const negative = value < 0n;
     const absolute = negative ? -value : value;
@@ -827,7 +1061,7 @@ function formatTonAmount(value: bigint): string {
 }
 
 function formatNanotonAmount(value: bigint): string {
-    return `${value.toString()} nanoton (${formatTonAmount(value)})`;
+    return `${formatCount(value)} nanoton (${formatTonAmount(value)})`;
 }
 
 function formatScaledNanotonPerUnit(value: bigint, unit: string): string {
@@ -851,7 +1085,25 @@ function formatFixedRatio(numerator: bigint, denominator: bigint, decimals: numb
     const scaled = (numerator * scale + denominator / 2n) / denominator;
     const whole = scaled / scale;
     const fraction = (scaled % scale).toString().padStart(decimals, '0').replace(/0+$/, '');
-    return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
+    return fraction ? `${formatCount(whole)}.${fraction}` : formatCount(whole);
+}
+
+function formatCount(value: bigint | number) {
+    return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+function formatPlural(count: number, singular: string) {
+    return `${count} ${count === 1 ? singular : `${singular}s`}`;
+}
+
+function formatUnixUtc(unixTime: number) {
+    const date = new Date(unixTime * 1000);
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hour = String(date.getUTCHours()).padStart(2, '0');
+    const minute = String(date.getUTCMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hour}:${minute} UTC`;
 }
 
 function formatDuration(seconds: number): string {
