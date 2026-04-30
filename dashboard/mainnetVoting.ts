@@ -60,6 +60,15 @@ type StakeLimitsPreview = {
     max_stake_factor: number
 };
 
+type MsgForwardPrices = {
+    lump_price: bigint,
+    bit_price: bigint,
+    cell_price: bigint,
+    ihr_price_factor: number,
+    first_frac: number,
+    next_frac: number
+};
+
 type ChangeRow = {
     label: string,
     current: string,
@@ -151,6 +160,8 @@ const PARAM_LABELS: Record<number, string> = {
     15: 'Election timing',
     16: 'Validator limits',
     17: 'Stake limits',
+    24: 'Masterchain message prices',
+    25: 'Basechain message prices',
     30: 'Consensus config',
     34: 'Current validator set'
 };
@@ -316,6 +327,9 @@ function buildConfigChangeRows(paramId: number, current: Cell | undefined, propo
                 return buildValidatorLimitsChangeRows(current ? parseValidatorLimits(current) : null, parseValidatorLimits(proposed));
             case 17:
                 return buildStakeLimitChangeRows(current ? parseStakeLimits(current) : null, parseStakeLimits(proposed));
+            case 24:
+            case 25:
+                return buildMsgForwardPriceChangeRows(current ? parseMsgForwardPrices(current) : null, parseMsgForwardPrices(proposed));
             case 30:
                 return buildConsensusChangeRows(current ? parseNewConsensusConfigAll(current) : null, parseNewConsensusConfigAll(proposed));
             default:
@@ -408,6 +422,23 @@ function parseStakeLimits(cell: Cell): StakeLimitsPreview {
         max_stake: slice.loadCoins(),
         min_total_stake: slice.loadCoins(),
         max_stake_factor: slice.loadUint(32)
+    };
+}
+
+function parseMsgForwardPrices(cell: Cell): MsgForwardPrices {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(8);
+    if (tag !== 0xea) {
+        throw new Error(`Unexpected message forward prices tag: ${tag}`);
+    }
+
+    return {
+        lump_price: slice.loadUintBig(64),
+        bit_price: slice.loadUintBig(64),
+        cell_price: slice.loadUintBig(64),
+        ihr_price_factor: slice.loadUint(32),
+        first_frac: slice.loadUint(16),
+        next_frac: slice.loadUint(16)
     };
 }
 
@@ -587,6 +618,41 @@ function buildStakeLimitChangeRows(current: StakeLimitsPreview | null, proposed:
     ];
 }
 
+function buildMsgForwardPriceChangeRows(current: MsgForwardPrices | null, proposed: MsgForwardPrices): ChangeRow[] {
+    return [
+        {
+            label: 'Base forwarding fee',
+            current: current ? formatNanotonAmount(current.lump_price) : 'Param not set',
+            proposed: formatNanotonAmount(proposed.lump_price)
+        },
+        {
+            label: 'Bit forwarding price',
+            current: current ? formatScaledNanotonPerUnit(current.bit_price, 'bit') : 'Param not set',
+            proposed: formatScaledNanotonPerUnit(proposed.bit_price, 'bit')
+        },
+        {
+            label: 'Cell forwarding price',
+            current: current ? formatScaledNanotonPerUnit(current.cell_price, 'cell') : 'Param not set',
+            proposed: formatScaledNanotonPerUnit(proposed.cell_price, 'cell')
+        },
+        {
+            label: 'IHR price factor',
+            current: current ? formatFractionFactor(current.ihr_price_factor) : 'Param not set',
+            proposed: formatFractionFactor(proposed.ihr_price_factor)
+        },
+        {
+            label: 'First route fee share',
+            current: current ? formatFractionPercent(current.first_frac) : 'Param not set',
+            proposed: formatFractionPercent(proposed.first_frac)
+        },
+        {
+            label: 'Next route fee share',
+            current: current ? formatFractionPercent(current.next_frac) : 'Param not set',
+            proposed: formatFractionPercent(proposed.next_frac)
+        }
+    ];
+}
+
 function buildFallbackChangeRows(current: Cell | null, proposed: Cell, note?: string): ChangeRow[] {
     const rows: ChangeRow[] = [];
 
@@ -681,6 +747,34 @@ function formatTonAmount(value: bigint): string {
     const fraction = (absolute % 1_000_000_000n).toString().padStart(9, '0').replace(/0+$/, '');
     const rendered = fraction ? `${whole.toString()}.${fraction}` : whole.toString();
     return `${negative ? '-' : ''}${rendered} TON`;
+}
+
+function formatNanotonAmount(value: bigint): string {
+    return `${value.toString()} nanoton (${formatTonAmount(value)})`;
+}
+
+function formatScaledNanotonPerUnit(value: bigint, unit: string): string {
+    return `${formatFixedRatio(value, 65_536n, 6)} nanoton/${unit}`;
+}
+
+function formatFractionFactor(value: number): string {
+    return `${formatFixedRatio(BigInt(value), 65_536n, 4)}x`;
+}
+
+function formatFractionPercent(value: number): string {
+    return `${formatFixedRatio(BigInt(value) * 100n, 65_536n, 2)}%`;
+}
+
+function formatFixedRatio(numerator: bigint, denominator: bigint, decimals: number): string {
+    if (denominator === 0n) {
+        return '0';
+    }
+
+    const scale = 10n ** BigInt(decimals);
+    const scaled = (numerator * scale + denominator / 2n) / denominator;
+    const whole = scaled / scale;
+    const fraction = (scaled % scale).toString().padStart(decimals, '0').replace(/0+$/, '');
+    return fraction ? `${whole.toString()}.${fraction}` : whole.toString();
 }
 
 function formatDuration(seconds: number): string {

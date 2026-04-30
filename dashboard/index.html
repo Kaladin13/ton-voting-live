@@ -154,10 +154,18 @@
       .meta {
         display: flex;
         flex-wrap: wrap;
+        align-items: center;
         gap: 10px 16px;
         margin-top: 18px;
         color: var(--muted);
         font-size: 0.95rem;
+      }
+
+      .proposal > .meta > span {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        line-height: 1.2;
       }
 
       .meta-link {
@@ -217,6 +225,7 @@
         border: 1px solid rgba(29, 26, 23, 0.12);
         background: rgba(255, 255, 255, 0.68);
         color: var(--ink);
+        line-height: 1.2;
       }
 
       .copy-hash:hover {
@@ -316,6 +325,12 @@
         justify-content: space-between;
         align-items: flex-start;
         gap: 16px;
+      }
+
+      .proposal-head > .chips {
+        justify-content: flex-end;
+        margin-top: 8px;
+        max-width: 50%;
       }
 
       .proposal-title {
@@ -583,6 +598,11 @@
           align-items: flex-start;
         }
 
+        .proposal-head > .chips {
+          justify-content: flex-start;
+          max-width: none;
+        }
+
         .hero-top {
           flex-direction: column;
         }
@@ -652,7 +672,7 @@
       const footerNote = document.getElementById('footer-note');
       const refreshButton = document.getElementById('refresh-button');
       const tonviewerLink = document.getElementById('tonviewer-link');
-      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot';
+      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v2';
       const SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 
       let refreshTimer = null;
@@ -1039,9 +1059,15 @@
 
       function formatTime(input) {
         const date = typeof input === 'string' ? new Date(input) : new Date(input * 1000);
-        const absolute = new Intl.DateTimeFormat(undefined, {
-          dateStyle: 'medium',
-          timeStyle: 'short',
+        const absolute = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+          timeZoneName: 'short',
         }).format(date);
         const relative = formatRelative(date);
         return `${absolute} (${relative})`;
