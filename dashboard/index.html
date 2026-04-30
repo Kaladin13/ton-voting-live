@@ -495,19 +495,17 @@
         align-items: center;
         justify-content: center;
         flex: 0 0 auto;
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
         margin-top: 1px;
-        border-radius: 999px;
-        border: 1px solid rgba(29, 26, 23, 0.22);
         color: var(--muted);
         cursor: help;
-        font-family: "SFMono-Regular", "Menlo", monospace;
-        font-size: 10px;
-        font-weight: 700;
-        line-height: 1;
-        text-align: center;
-        text-transform: none;
+      }
+
+      .info-dot svg {
+        display: block;
+        width: 18px;
+        height: 18px;
       }
 
       .info-dot::after {
@@ -762,7 +760,10 @@
         loadSnapshot({ force: true });
       });
 
-      proposalList.addEventListener('click', async (event) => {
+      proposalList.addEventListener('click', copyHashFromClick);
+      resolvedList.addEventListener('click', copyHashFromClick);
+
+      async function copyHashFromClick(event) {
         const target = event.target instanceof Element ? event.target : null;
         const button = target ? target.closest('.copy-hash') : null;
         if (!button) {
@@ -792,7 +793,7 @@
             label.textContent = previous || 'Copy';
           }
         }, 1200);
-      });
+      }
 
       start();
 
@@ -998,7 +999,13 @@
               `).join('')}
             </div>
             <div class="meta">
-              <span>Proposal hash <span class="mono">${proposal.hash.slice(0, 16)}…${proposal.hash.slice(-10)}</span></span>
+              <span>
+                Proposal hash
+                <button class="copy-hash" type="button" data-copy-value="${proposal.hash}">
+                  <span class="mono">${proposal.hash.slice(0, 16)}…${proposal.hash.slice(-10)}</span>
+                  <span class="copy-label">Copy</span>
+                </button>
+              </span>
             </div>
           </div>
         `;
@@ -1095,7 +1102,7 @@
 
       function metricCard(label, value, tooltip) {
         const info = tooltip
-          ? `<span class="info-dot" tabindex="0" aria-label="${escapeHtml(tooltip)}" data-tooltip="${escapeHtml(tooltip)}">?</span>`
+          ? `<span class="info-dot" tabindex="0" aria-label="${escapeHtml(tooltip)}" data-tooltip="${escapeHtml(tooltip)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.25"></circle><path d="M9.6 9.2a2.55 2.55 0 0 1 4.85 1.1c0 1.85-2.45 2.25-2.45 3.7"></path><path d="M12 17.25h.01"></path></svg></span>`
           : '';
         return `
           <div class="metric">
