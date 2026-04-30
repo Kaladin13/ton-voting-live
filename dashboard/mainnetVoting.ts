@@ -75,10 +75,16 @@ type ChangeRow = {
     proposed: string
 };
 
+type ProposalSource = {
+    kind: 'mtonga' | 'independent',
+    label: 'MTONGA plan' | 'Independent community proposal'
+};
+
 type ResolvedProposal = {
     hash: string,
     paramId: number,
     paramLabel: string,
+    source: ProposalSource,
     status: 'accepted',
     summary: string,
     closedBecause: string,
@@ -88,6 +94,32 @@ type ResolvedProposal = {
 type VsetEntry = {
     idx: number,
     weight: bigint
+};
+
+type ActiveProposal = {
+    hash: string,
+    paramId: number,
+    paramLabel: string,
+    source: ProposalSource,
+    critical: boolean,
+    expiresAt: number,
+    validatorSetMatchesCurrent: boolean,
+    voterCount: number,
+    neededValidatorCount: number | null,
+    yesWeight: string,
+    neededWeight: string,
+    totalWeight: string,
+    thresholdWeight: string,
+    yesPercentOfTotal: string,
+    yesPercentOfThreshold: string,
+    neededPercentOfTotal: string,
+    progressPercent: string,
+    roundsRemaining: number,
+    wins: number,
+    losses: number,
+    rule: ProposalSetup,
+    summary: string,
+    changeRows: ChangeRow[] | null
 };
 
 export type VotingSnapshot = {
@@ -110,29 +142,7 @@ export type VotingSnapshot = {
     validatorLimits: ReturnType<typeof getValidatorsConf>,
     proposalCount: number,
     resolvedProposal: ResolvedProposal | null,
-    proposals: Array<{
-        hash: string,
-        paramId: number,
-        paramLabel: string,
-        critical: boolean,
-        expiresAt: number,
-        validatorSetMatchesCurrent: boolean,
-        voterCount: number,
-        yesWeight: string,
-        neededWeight: string,
-        totalWeight: string,
-        thresholdWeight: string,
-        yesPercentOfTotal: string,
-        yesPercentOfThreshold: string,
-        neededPercentOfTotal: string,
-        progressPercent: string,
-        roundsRemaining: number,
-        wins: number,
-        losses: number,
-        rule: ProposalSetup,
-        summary: string,
-        changeRows: ChangeRow[] | null
-    }>
+    proposals: ActiveProposal[]
 };
 
 const MAINNET_CONFIG_ADDRESS = Address.parse('Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn');
@@ -170,8 +180,14 @@ const tonApi = new TonApiClient({ baseUrl: 'https://tonapi.io' });
 const adapter = new ContractAdapter(tonApi);
 const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
+const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
+const MTONGA_PROPOSAL_HASHES = [
+    LAST_KNOWN_PROPOSAL_HASH
+];
+const MTONGA_PROPOSAL_HASH_SET = new Set(MTONGA_PROPOSAL_HASHES);
+
 const LAST_KNOWN_PROPOSAL = {
-    hash: 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f',
+    hash: LAST_KNOWN_PROPOSAL_HASH,
     paramId: 30,
     paramLabel: 'Consensus config',
     previousValue: {
@@ -229,6 +245,53 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const thresholdWeight = (currentVset.total_weight * 3n) / 4n;
     const currentConsensus = parseNewConsensusConfigAll(getRequiredParam(cfg, 30));
     const activeProposalHashes = new Set(proposals.map((proposal) => toHex(proposal.proposalHash)));
+    const activeProposals = proposals.map((proposal) => {
+        const hash = toHex(proposal.proposalHash);
+        const yesWeight = thresholdWeight - proposal.weight_remaining;
+        const neededWeight = proposal.weight_remaining > 0n ? proposal.weight_remaining : 0n;
+        const rule = proposal.critical ? voteSetup.critical : voteSetup.normal;
+        const changeRows = buildConfigChangeRows(proposal.param_id, cfg.get(proposal.param_id), proposal.value);
+        const validatorSetMatchesCurrent = toHex(proposal.vset_id) === currentVsetHash;
+
+        return {
+            hash,
+            paramId: proposal.param_id,
+            paramLabel: PARAM_LABELS[proposal.param_id] ?? `Config param ${proposal.param_id}`,
+            source: getProposalSource(hash),
+            critical: proposal.critical,
+            expiresAt: proposal.expires,
+            validatorSetMatchesCurrent,
+            voterCount: proposal.voters.length,
+            neededValidatorCount: validatorSetMatchesCurrent
+                ? countValidatorsNeededForWeight(currentVset.list, proposal.voters, neededWeight)
+                : null,
+            yesWeight: yesWeight.toString(),
+            neededWeight: neededWeight.toString(),
+            totalWeight: currentVset.total_weight.toString(),
+            thresholdWeight: thresholdWeight.toString(),
+            yesPercentOfTotal: formatPercent(yesWeight, currentVset.total_weight),
+            yesPercentOfThreshold: formatPercent(yesWeight, thresholdWeight),
+            neededPercentOfTotal: formatPercent(neededWeight, currentVset.total_weight),
+            progressPercent: clampPercent(formatPercent(yesWeight, thresholdWeight)),
+            roundsRemaining: proposal.rounds_remaining,
+            wins: proposal.wins,
+            losses: proposal.losses,
+            rule,
+            summary: buildSummary({
+                critical: proposal.critical,
+                paramLabel: PARAM_LABELS[proposal.param_id] ?? `config param ${proposal.param_id}`,
+                voterCount: proposal.voters.length,
+                totalValidators: currentVset.total,
+                yesPercentOfTotal: formatPercent(yesWeight, currentVset.total_weight),
+                neededPercentOfTotal: formatPercent(neededWeight, currentVset.total_weight),
+                wins: proposal.wins,
+                minWins: rule.min_wins,
+                losses: proposal.losses,
+                maxLosses: rule.max_losses
+            }),
+            changeRows
+        };
+    }).sort(compareProposalPriority);
 
     return {
         fetchedAt: new Date().toISOString(),
@@ -250,47 +313,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
         validatorLimits,
         proposalCount: proposals.length,
         resolvedProposal: buildResolvedProposal(activeProposalHashes, currentConsensus),
-        proposals: proposals.map((proposal) => {
-            const yesWeight = thresholdWeight - proposal.weight_remaining;
-            const neededWeight = proposal.weight_remaining > 0n ? proposal.weight_remaining : 0n;
-            const rule = proposal.critical ? voteSetup.critical : voteSetup.normal;
-            const changeRows = buildConfigChangeRows(proposal.param_id, cfg.get(proposal.param_id), proposal.value);
-
-            return {
-                hash: toHex(proposal.proposalHash),
-                paramId: proposal.param_id,
-                paramLabel: PARAM_LABELS[proposal.param_id] ?? `Config param ${proposal.param_id}`,
-                critical: proposal.critical,
-                expiresAt: proposal.expires,
-                validatorSetMatchesCurrent: toHex(proposal.vset_id) === currentVsetHash,
-                voterCount: proposal.voters.length,
-                yesWeight: yesWeight.toString(),
-                neededWeight: neededWeight.toString(),
-                totalWeight: currentVset.total_weight.toString(),
-                thresholdWeight: thresholdWeight.toString(),
-                yesPercentOfTotal: formatPercent(yesWeight, currentVset.total_weight),
-                yesPercentOfThreshold: formatPercent(yesWeight, thresholdWeight),
-                neededPercentOfTotal: formatPercent(neededWeight, currentVset.total_weight),
-                progressPercent: clampPercent(formatPercent(yesWeight, thresholdWeight)),
-                roundsRemaining: proposal.rounds_remaining,
-                wins: proposal.wins,
-                losses: proposal.losses,
-                rule,
-                summary: buildSummary({
-                    critical: proposal.critical,
-                    paramLabel: PARAM_LABELS[proposal.param_id] ?? `config param ${proposal.param_id}`,
-                    voterCount: proposal.voters.length,
-                    totalValidators: currentVset.total,
-                    yesPercentOfTotal: formatPercent(yesWeight, currentVset.total_weight),
-                    neededPercentOfTotal: formatPercent(neededWeight, currentVset.total_weight),
-                    wins: proposal.wins,
-                    minWins: rule.min_wins,
-                    losses: proposal.losses,
-                    maxLosses: rule.max_losses
-                }),
-                changeRows
-            };
-        })
+        proposals: activeProposals
     };
 }
 
@@ -307,11 +330,65 @@ function buildResolvedProposal(activeProposalHashes: Set<string>, currentConsens
         hash: LAST_KNOWN_PROPOSAL.hash,
         paramId: LAST_KNOWN_PROPOSAL.paramId,
         paramLabel: LAST_KNOWN_PROPOSAL.paramLabel,
+        source: getProposalSource(LAST_KNOWN_PROPOSAL.hash),
         status: 'accepted',
         summary: 'This proposal was accepted and applied on-chain. Param 30 now matches the payload that previously appeared in active voting.',
         closedBecause: 'The proposal is gone from the active get-method list, and the live config value now matches its proposed state.',
         changeRows: buildConsensusChangeRows(LAST_KNOWN_PROPOSAL.previousValue, LAST_KNOWN_PROPOSAL.acceptedValue)
     };
+}
+
+function getProposalSource(hash: string): ProposalSource {
+    if (MTONGA_PROPOSAL_HASH_SET.has(hash)) {
+        return {
+            kind: 'mtonga',
+            label: 'MTONGA plan'
+        };
+    }
+
+    return {
+        kind: 'independent',
+        label: 'Independent community proposal'
+    };
+}
+
+function compareProposalPriority(left: ActiveProposal, right: ActiveProposal) {
+    return proposalSourcePriority(left.source) - proposalSourcePriority(right.source);
+}
+
+function proposalSourcePriority(source: ProposalSource) {
+    return source.kind === 'mtonga' ? 0 : 1;
+}
+
+function countValidatorsNeededForWeight(vset: VsetEntry[], voters: number[], neededWeight: bigint) {
+    if (neededWeight <= 0n) {
+        return 0;
+    }
+
+    const voted = new Set(voters);
+    let accumulated = 0n;
+    let count = 0;
+    const remaining = vset
+        .filter((entry) => !voted.has(entry.idx))
+        .sort((left, right) => compareBigintDesc(left.weight, right.weight));
+
+    for (const entry of remaining) {
+        accumulated += entry.weight;
+        count += 1;
+
+        if (accumulated >= neededWeight) {
+            return count;
+        }
+    }
+
+    return null;
+}
+
+function compareBigintDesc(left: bigint, right: bigint) {
+    if (left === right) {
+        return 0;
+    }
+    return left > right ? -1 : 1;
 }
 
 function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {

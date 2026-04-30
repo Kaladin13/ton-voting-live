@@ -353,6 +353,7 @@
         font-size: 0.88rem;
         background: rgba(29, 26, 23, 0.06);
         color: var(--muted);
+        text-decoration: none;
       }
 
       .chip.critical {
@@ -363,6 +364,32 @@
       .chip.good {
         background: var(--accent-soft);
         color: var(--accent);
+      }
+
+      .chip.mtonga {
+        background: var(--accent-soft);
+        border: 1px solid rgba(12, 124, 89, 0.28);
+        color: var(--accent);
+        font-weight: 600;
+        text-decoration: underline;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 3px;
+      }
+
+      .chip.mtonga::after {
+        content: "↗";
+        font-size: 0.78em;
+        line-height: 1;
+      }
+
+      .chip.mtonga:hover {
+        background: rgba(12, 124, 89, 0.2);
+        border-color: rgba(12, 124, 89, 0.42);
+      }
+
+      .chip.independent {
+        background: rgba(145, 45, 31, 0.12);
+        color: var(--critical);
       }
 
       .summary {
@@ -453,10 +480,62 @@
       }
 
       .metric .label {
+        display: inline-flex;
+        align-items: flex-start;
+        gap: 6px;
         color: var(--muted);
         font-size: 0.82rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
+      }
+
+      .info-dot {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        margin-top: 1px;
+        border-radius: 999px;
+        border: 1px solid rgba(29, 26, 23, 0.22);
+        color: var(--muted);
+        cursor: help;
+        font-family: "SFMono-Regular", "Menlo", monospace;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        text-align: center;
+        text-transform: none;
+      }
+
+      .info-dot::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        width: min(240px, 70vw);
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(29, 26, 23, 0.92);
+        color: #fffaf2;
+        font-size: 0.78rem;
+        font-weight: 500;
+        letter-spacing: 0;
+        line-height: 1.35;
+        opacity: 0;
+        pointer-events: none;
+        text-transform: none;
+        transform: translate(-50%, 4px);
+        transition: opacity 160ms ease, transform 160ms ease;
+        z-index: 5;
+      }
+
+      .info-dot:hover::after,
+      .info-dot:focus-visible::after {
+        opacity: 1;
+        transform: translate(-50%, 0);
       }
 
       .metric .value {
@@ -672,7 +751,8 @@
       const footerNote = document.getElementById('footer-note');
       const refreshButton = document.getElementById('refresh-button');
       const tonviewerLink = document.getElementById('tonviewer-link');
-      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v2';
+      const MTONGA_PLAN_URL = 'https://t.me/durov/482';
+      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v4';
       const SNAPSHOT_MAX_AGE_MS = 5 * 60 * 1000;
 
       let refreshTimer = null;
@@ -897,9 +977,11 @@
       }
 
       function renderResolvedProposal(proposal) {
+        const source = normalizeProposalSource(proposal.source);
         return `
           <div class="resolved-card">
             <div class="chips">
+              ${renderProposalSourceChip(source)}
               <span class="chip good">Accepted</span>
               <span class="chip">Param ${proposal.paramId}</span>
             </div>
@@ -923,11 +1005,17 @@
       }
 
       function renderProposal(proposal, totalValidators) {
+        const source = normalizeProposalSource(proposal.source);
         const severityClass = proposal.critical ? 'critical' : 'good';
         const severityLabel = proposal.critical ? 'Critical' : 'Non-critical';
         const deadline = formatTime(proposal.expiresAt);
         const metrics = [
           metricCard('Voted validators', `${proposal.voterCount} / ${totalValidators}`),
+          metricCard(
+            'Min validators needed',
+            formatNeededValidatorCount(proposal.neededValidatorCount),
+            'Minimum additional validators needed if the largest remaining validators vote first.'
+          ),
           metricCard('Weight in favor', `${proposal.yesPercentOfTotal}% of total`),
           metricCard('Needed this round', `${proposal.neededPercentOfTotal}% more`),
           metricCard('Round wins', `${proposal.wins} / ${proposal.rule.min_wins}`),
@@ -956,6 +1044,7 @@
               <h3 class="proposal-title">${escapeHtml(proposal.paramLabel)}</h3>
             </div>
             <div class="chips">
+              ${renderProposalSourceChip(source)}
               <span class="chip ${severityClass}">${severityLabel}</span>
               <span class="chip">${proposal.validatorSetMatchesCurrent ? 'Current validator set' : 'Awaiting set rollover'}</span>
               <span class="chip">Deadline ${deadline}</span>
@@ -1004,10 +1093,13 @@
         `;
       }
 
-      function metricCard(label, value) {
+      function metricCard(label, value, tooltip) {
+        const info = tooltip
+          ? `<span class="info-dot" tabindex="0" aria-label="${escapeHtml(tooltip)}" data-tooltip="${escapeHtml(tooltip)}">?</span>`
+          : '';
         return `
           <div class="metric">
-            <span class="label">${label}</span>
+            <span class="label">${label}${info}</span>
             <span class="value">${value}</span>
           </div>
         `;
@@ -1094,6 +1186,36 @@
         const abs = Math.abs(amount);
         const plural = abs === 1 ? unit : `${unit}s`;
         return amount > 0 ? `in ${abs} ${plural}` : `${abs} ${plural} ago`;
+      }
+
+      function formatNeededValidatorCount(count) {
+        if (typeof count !== 'number') {
+          return 'After set rollover';
+        }
+        return `${count} more`;
+      }
+
+      function normalizeProposalSource(source) {
+        if (source && source.kind === 'mtonga') {
+          return {
+            kind: 'mtonga',
+            label: 'MTONGA plan',
+          };
+        }
+
+        return {
+          kind: 'independent',
+          label: 'Independent community proposal',
+        };
+      }
+
+      function renderProposalSourceChip(source) {
+        const label = escapeHtml(source.label);
+        if (source.kind === 'mtonga') {
+          return `<a class="chip mtonga" href="${MTONGA_PLAN_URL}" target="_blank" rel="noreferrer">${label}</a>`;
+        }
+
+        return `<span class="chip independent">${label}</span>`;
       }
 
       function escapeHtml(value) {
