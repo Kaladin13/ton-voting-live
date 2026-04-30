@@ -1527,7 +1527,6 @@
         const cached = readStoredSnapshot();
 
         if (!force && cached && !isStoredSnapshotExpired(cached)) {
-          renderSnapshot(cached.snapshot);
           return;
         }
 
@@ -1535,11 +1534,10 @@
           return;
         }
         loading = true;
-        if (cached) {
-          renderSnapshot(cached.snapshot);
-          setStatus('Refreshing live mainnet data…', 'empty');
-        } else {
+        if (!cached) {
           setStatus('Loading live mainnet data…', 'empty');
+        } else if (force) {
+          setStatus('Refreshing live mainnet data…', 'empty');
         }
 
         try {
@@ -1553,10 +1551,9 @@
           writeStoredSnapshot(payload);
           renderSnapshot(payload);
         } catch (error) {
-          if (cached) {
-            renderSnapshot(cached.snapshot);
+          if (cached && force) {
             setStatus('Showing saved data; live refresh failed.', 'empty');
-          } else {
+          } else if (!cached) {
             setStatus(error.message || 'Failed to load live data', 'error');
             heroStats.innerHTML = '';
             heroMeta.innerHTML = '';
