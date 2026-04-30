@@ -919,8 +919,11 @@
           statCard('Round threshold', '75%'),
         ].join('');
 
+        const configAddress = snapshot.configContract.friendly;
+        const shortConfigAddress = shortenMiddle(configAddress, 10, 8);
+
         heroMeta.innerHTML = [
-          `<span>Config contract <a class="meta-link mono" href="${snapshot.configContract.tonviewerUrl}" target="_blank" rel="noreferrer">${snapshot.configContract.friendly}</a></span>`,
+          `<span>Config contract <a class="meta-link mono" href="${snapshot.configContract.tonviewerUrl}" target="_blank" rel="noreferrer" title="${escapeHtml(configAddress)}">${escapeHtml(shortConfigAddress)}</a></span>`,
           `<span>Validator round ends ${roundEnds}</span>`,
           `<span>Last pulled ${fetchedAt}</span>`,
         ].join('');
@@ -1200,6 +1203,14 @@
           return 'After set rollover';
         }
         return `${count} more`;
+      }
+
+      function shortenMiddle(value, startLength, endLength) {
+        const text = String(value);
+        if (text.length <= startLength + endLength + 1) {
+          return text;
+        }
+        return `${text.slice(0, startLength)}…${text.slice(-endLength)}`;
       }
 
       function normalizeProposalSource(source) {
