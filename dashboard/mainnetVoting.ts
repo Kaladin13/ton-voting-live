@@ -184,7 +184,18 @@ export type VotingSnapshot = {
     validatorLimits: ReturnType<typeof getValidatorsConf>,
     proposalCount: number,
     resolvedProposal: ResolvedProposal | null,
+    resolvedProposals: ResolvedProposal[],
     proposals: ActiveProposal[]
+};
+
+type KnownConfigResolvedProposal = {
+    hash: string,
+    paramId: number,
+    paramLabel: string,
+    previousValue: Cell,
+    acceptedValue: Cell,
+    summary: string,
+    closedBecause: string
 };
 
 const MAINNET_CONFIG_ADDRESS = Address.parse('Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn');
@@ -281,6 +292,36 @@ const LAST_KNOWN_PROPOSAL = {
     }
 };
 
+const RECENT_ACCEPTED_CONFIG_PROPOSALS: KnownConfigResolvedProposal[] = [
+    {
+        hash: 'b9fc3e68609931713760d0596a3482d9a084c90062d697aee7b420fc1b32a6e5',
+        paramId: 18,
+        paramLabel: PARAM_LABELS[18],
+        previousValue: cellFromBase64('te6cckEBAQEAKQAATdBmAAAAAAAAAAAAAAAAgAAAAAAAAPoAAAAAAAAB9AAAAAAAA9CQQJVLVZs='),
+        acceptedValue: cellFromBase64('te6cckEBAwEAWQACAUgBAgBM3swAAAAAAAAAAAAAAAEAAAAAAAAB9AAAAAAAAAPoAAAAAAAHoSAAU71Pk/sGY0+T+wAAAAAAAAAAAAAAAAAAAAQ4AAAAAAAAH0AAAAAAAD0JBPXsekg='),
+        summary: 'This proposal was accepted and applied on-chain. Param 18 now matches the MTONGA storage price reduction payload.',
+        closedBecause: 'Acceptance was observed on 2026-05-01 07:08 UTC; the proposal is gone from the active get-method list, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '8fb9e0904ed7fc276e2d43e559a6a502f8295a36331e15162207884d207f5685',
+        paramId: 25,
+        paramLabel: PARAM_LABELS[25],
+        previousValue: cellFromBase64('te6cckEBAQEAIwAAQuoAAAAAAAYagAAAAAABkAAAAAAAAJxAAAAAAYAAVVVVVXYlR3Q='),
+        acceptedValue: cellFromBase64('te6cckEBAQEAIwAAQuoAAAAAAAEEawAAAAAAQqqrAAAAABoKqqsAAYAAVVVVVXUQ/H0='),
+        summary: 'This proposal was accepted and applied on-chain. Param 25 now matches the MTONGA basechain message price reduction payload.',
+        closedBecause: 'Acceptance was observed on 2026-05-01 07:08 UTC; the proposal is gone from the active get-method list, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '5ef02b3ad2eb630e050850e88b9eb025a683f73d1f154ecef0a9e8168606d92a',
+        paramId: 21,
+        paramLabel: PARAM_LABELS[21],
+        previousValue: cellFromBase64('te6cckEBAQEATAAAlNEAAAAAAAAAZAAAAAAAAJxA3gAAAAABkAAAAAAAAAAPQkAAAAAAAA9CQAAAAAAAACcQAAAAAACYloAAAAAABfXhAAAAAAA7msoAGR7wcQ=='),
+        acceptedValue: cellFromBase64('te6cckEBAQEATAAAlNEAAAAAAAAAZAAAAAAAABoL3gAAAAAAQqqrAAAAAAAPQkAAAAAAAA9CQAAAAAAAACcQAAAAAACYloAAAAAABfXhAAAAAAA7msoAgyFv5Q=='),
+        summary: 'This proposal was accepted and applied on-chain. Param 21 now matches the MTONGA basechain gas price reduction payload.',
+        closedBecause: 'Acceptance was observed on 2026-05-01 07:08 UTC; the proposal is gone from the active get-method list, and the live config value now matches its proposed state.'
+    }
+];
+
 export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const cfg = await config.getConfig();
     const proposals = await config.getListedProposals();
@@ -340,6 +381,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
             changeRows
         };
     }).sort(compareProposalPriority);
+    const resolvedProposals = buildResolvedProposals(activeProposalHashes, cfg, currentConsensus);
 
     return {
         fetchedAt: new Date().toISOString(),
@@ -360,12 +402,56 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
         elections,
         validatorLimits,
         proposalCount: proposals.length,
-        resolvedProposal: buildResolvedProposal(activeProposalHashes, currentConsensus),
+        resolvedProposal: resolvedProposals[0] ?? null,
+        resolvedProposals,
         proposals: activeProposals
     };
 }
 
-function buildResolvedProposal(activeProposalHashes: Set<string>, currentConsensus: ConsensusConfigAll): ResolvedProposal | null {
+function buildResolvedProposals(
+    activeProposalHashes: Set<string>,
+    currentConfig: MapLikeConfig,
+    currentConsensus: ConsensusConfigAll
+): ResolvedProposal[] {
+    const resolved = RECENT_ACCEPTED_CONFIG_PROPOSALS
+        .map((proposal) => buildResolvedConfigProposal(proposal, activeProposalHashes, currentConfig))
+        .filter((proposal): proposal is ResolvedProposal => proposal !== null);
+    const consensusProposal = buildResolvedConsensusProposal(activeProposalHashes, currentConsensus);
+
+    if (consensusProposal) {
+        resolved.push(consensusProposal);
+    }
+
+    return resolved;
+}
+
+function buildResolvedConfigProposal(
+    proposal: KnownConfigResolvedProposal,
+    activeProposalHashes: Set<string>,
+    currentConfig: MapLikeConfig
+): ResolvedProposal | null {
+    if (activeProposalHashes.has(proposal.hash)) {
+        return null;
+    }
+
+    const currentValue = currentConfig.get(proposal.paramId);
+    if (!currentValue?.equals(proposal.acceptedValue)) {
+        return null;
+    }
+
+    return {
+        hash: proposal.hash,
+        paramId: proposal.paramId,
+        paramLabel: proposal.paramLabel,
+        source: getProposalSource(proposal.hash),
+        status: 'accepted',
+        summary: proposal.summary,
+        closedBecause: proposal.closedBecause,
+        changeRows: buildConfigChangeRows(proposal.paramId, proposal.previousValue, proposal.acceptedValue)
+    };
+}
+
+function buildResolvedConsensusProposal(activeProposalHashes: Set<string>, currentConsensus: ConsensusConfigAll): ResolvedProposal | null {
     if (activeProposalHashes.has(LAST_KNOWN_PROPOSAL.hash)) {
         return null;
     }
@@ -384,6 +470,10 @@ function buildResolvedProposal(activeProposalHashes: Set<string>, currentConsens
         closedBecause: 'The proposal is gone from the active get-method list, and the live config value now matches its proposed state.',
         changeRows: buildConsensusChangeRows(LAST_KNOWN_PROPOSAL.previousValue, LAST_KNOWN_PROPOSAL.acceptedValue)
     };
+}
+
+function cellFromBase64(boc: string): Cell {
+    return Cell.fromBoc(Buffer.from(boc, 'base64'))[0];
 }
 
 function getProposalSource(hash: string): ProposalSource {

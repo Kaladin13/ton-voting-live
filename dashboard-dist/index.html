@@ -624,12 +624,22 @@
         color: var(--ink);
       }
 
+      #resolved-list:not(.empty) {
+        display: grid;
+        gap: 18px;
+        margin-top: 18px;
+      }
+
       .resolved-card {
         margin-top: 18px;
         padding: 18px;
         border-radius: 22px;
         background: rgba(12, 124, 89, 0.08);
         border: 1px solid rgba(12, 124, 89, 0.16);
+      }
+
+      #resolved-list:not(.empty) .resolved-card {
+        margin-top: 0;
       }
 
       .resolved-card h4 {
@@ -1461,7 +1471,7 @@
       const refreshButton = document.getElementById('refresh-button');
       const tonviewerLink = document.getElementById('tonviewer-link');
       const MTONGA_PLAN_URL = 'https://t.me/durov/482';
-      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v7';
+      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v8';
       const SNAPSHOT_MAX_AGE_MS = 60 * 1000;
 
       let refreshTimer = null;
@@ -1614,8 +1624,9 @@
         proposalList.innerHTML = '';
         resolvedList.innerHTML = '';
         tonviewerLink.href = snapshot.configContract.tonviewerUrl;
+        const resolvedProposals = getResolvedProposals(snapshot);
         proposalCounter.textContent = `${snapshot.proposalCount} live ${snapshot.proposalCount === 1 ? 'proposal' : 'proposals'}`;
-        resolvedCounter.textContent = snapshot.resolvedProposal ? '1 remembered outcome' : '0 remembered outcomes';
+        resolvedCounter.textContent = `${resolvedProposals.length} remembered ${resolvedProposals.length === 1 ? 'outcome' : 'outcomes'}`;
 
         const roundEnds = formatTime(snapshot.validatorRound.currentSetEndsAt);
         const fetchedAt = formatTime(snapshot.fetchedAt);
@@ -1678,14 +1689,24 @@
       }
 
       function renderResolvedSection(snapshot) {
-        if (!snapshot.resolvedProposal) {
+        const resolvedProposals = getResolvedProposals(snapshot);
+
+        if (!resolvedProposals.length) {
           resolvedList.className = 'empty';
           resolvedList.innerHTML = '<p>No remembered resolved proposals yet.</p>';
           return;
         }
 
         resolvedList.className = '';
-        resolvedList.innerHTML = renderResolvedProposal(snapshot.resolvedProposal);
+        resolvedList.innerHTML = resolvedProposals.map(renderResolvedProposal).join('');
+      }
+
+      function getResolvedProposals(snapshot) {
+        if (Array.isArray(snapshot.resolvedProposals)) {
+          return snapshot.resolvedProposals;
+        }
+
+        return snapshot.resolvedProposal ? [snapshot.resolvedProposal] : [];
       }
 
       function renderResolvedProposal(proposal) {
