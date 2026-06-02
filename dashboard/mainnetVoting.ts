@@ -20,13 +20,26 @@ type VoteSetup = {
     critical: ProposalSetup
 };
 
-type ConsensusConfig = {
+type SimplexConsensusConfig = {
+    version: 'simplex_config',
+    flags: number,
+    use_quic: boolean,
+    target_rate_ms: number,
+    slots_per_leader_window: number,
+    first_block_timeout_ms: number,
+    max_leader_window_desync: number
+};
+
+type SimplexConsensusConfigV2 = {
     version: 'simplex_config_v2',
     flags: number,
+    enable_observers: boolean,
     use_quic: boolean,
     slots_per_leader_window: number,
     noncritical: Record<string, number>
 };
+
+type ConsensusConfig = SimplexConsensusConfig | SimplexConsensusConfigV2;
 
 type ConsensusConfigAll = {
     hasMc: boolean,
@@ -58,6 +71,11 @@ type StakeLimitsPreview = {
     max_stake: bigint,
     min_total_stake: bigint,
     max_stake_factor: number
+};
+
+type GlobalVersion = {
+    version: number,
+    capabilities: bigint
 };
 
 type StoragePrices = {
@@ -109,6 +127,68 @@ type MsgForwardPrices = {
     ihr_price_factor: number,
     first_frac: number,
     next_frac: number
+};
+
+type BlockConsensusConfig = {
+    version: 'consensus_config' | 'consensus_config_new' | 'consensus_config_v3' | 'consensus_config_v4',
+    flags: number | null,
+    use_quic: boolean | null,
+    new_catchain_ids: boolean | null,
+    round_candidates: number,
+    next_candidate_delay_ms: number,
+    consensus_timeout_ms: number,
+    fast_attempts: number,
+    attempt_duration: number,
+    catchain_max_deps: number,
+    max_block_bytes: number,
+    max_collated_bytes: number,
+    proto_version: number | null,
+    catchain_max_blocks_coeff: number | null
+};
+
+type SizeLimitsConfig = {
+    version: 'size_limits_config' | 'size_limits_config_v2',
+    max_msg_bits: number,
+    max_msg_cells: number,
+    max_library_cells: number,
+    max_vm_data_depth: number,
+    max_ext_msg_size: number,
+    max_ext_msg_depth: number,
+    max_acc_state_cells: number | null,
+    max_mc_acc_state_cells: number | null,
+    max_acc_public_libraries: number | null,
+    defer_out_queue_size_limit: number | null,
+    max_msg_extra_currencies: number | null,
+    max_acc_fixed_prefix_length: number | null,
+    acc_state_cells_for_storage_dict: number | null,
+    max_transaction_library_loads: number | null
+};
+
+type OracleBridgeParams = {
+    bridge_address: bigint,
+    oracle_multisig_address: bigint,
+    oracle_count: number,
+    external_chain_address: bigint
+};
+
+type JettonBridgePrices = {
+    bridge_burn_fee: bigint,
+    bridge_mint_fee: bigint,
+    wallet_min_tons_for_storage: bigint,
+    wallet_gas_consumption: bigint,
+    minter_min_tons_for_storage: bigint,
+    discover_gas_consumption: bigint
+};
+
+type JettonBridgeParams = {
+    version: 'jetton_bridge_params_v0' | 'jetton_bridge_params_v1',
+    bridge_address: bigint,
+    oracles_address: bigint,
+    oracle_count: number,
+    state_flags: number,
+    burn_bridge_fee: bigint | null,
+    prices: JettonBridgePrices | null,
+    external_chain_address: bigint | null
 };
 
 type ChangeRow = {
@@ -218,6 +298,7 @@ const NONCRITICAL_PARAM_NAMES: Record<number, string> = {
     14: 'no_empty_blocks_on_error_timeout_ms'
 };
 const PARAM_LABELS: Record<number, string> = {
+    8: 'Network version',
     11: 'Voting rules',
     14: 'Block reward',
     15: 'Election timing',
@@ -228,8 +309,16 @@ const PARAM_LABELS: Record<number, string> = {
     21: 'Basechain gas prices',
     24: 'Masterchain message prices',
     25: 'Basechain message prices',
+    29: 'Block consensus config',
     30: 'Consensus config',
-    34: 'Current validator set'
+    34: 'Current validator set',
+    43: 'Account and message limits',
+    71: 'ETH-TON outbound bridge',
+    72: 'BSC-TON outbound bridge',
+    73: 'Polygon-TON outbound bridge',
+    79: 'ETH-TON inbound bridge',
+    81: 'BNB-TON inbound bridge',
+    82: 'Polygon-TON inbound bridge'
 };
 
 const tonApi = new TonApiClient({ baseUrl: 'https://tonapi.io' });
@@ -256,6 +345,7 @@ const LAST_KNOWN_PROPOSAL = {
         shard: {
             version: 'simplex_config_v2' as const,
             flags: 0,
+            enable_observers: false,
             use_quic: false,
             slots_per_leader_window: 4,
             noncritical: {
@@ -270,6 +360,7 @@ const LAST_KNOWN_PROPOSAL = {
         mc: {
             version: 'simplex_config_v2' as const,
             flags: 0,
+            enable_observers: false,
             use_quic: true,
             slots_per_leader_window: 4,
             noncritical: {
@@ -281,6 +372,7 @@ const LAST_KNOWN_PROPOSAL = {
         shard: {
             version: 'simplex_config_v2' as const,
             flags: 0,
+            enable_observers: false,
             use_quic: true,
             slots_per_leader_window: 4,
             noncritical: {
@@ -532,6 +624,8 @@ function compareBigintDesc(left: bigint, right: bigint) {
 function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {
     try {
         switch (paramId) {
+            case 8:
+                return buildGlobalVersionChangeRows(current ? parseGlobalVersion(current) : null, parseGlobalVersion(proposed));
             case 11:
                 return buildVoteSetupChangeRows(current ? parseVoteSetup(current) : null, parseVoteSetup(proposed));
             case 14:
@@ -550,8 +644,20 @@ function buildConfigChangeRows(paramId: number, current: Cell | undefined, propo
             case 24:
             case 25:
                 return buildMsgForwardPriceChangeRows(current ? parseMsgForwardPrices(current) : null, parseMsgForwardPrices(proposed));
+            case 29:
+                return buildBlockConsensusChangeRows(current ? parseBlockConsensusConfig(current) : null, parseBlockConsensusConfig(proposed));
             case 30:
                 return buildConsensusChangeRows(current ? parseNewConsensusConfigAll(current) : null, parseNewConsensusConfigAll(proposed));
+            case 43:
+                return buildSizeLimitsChangeRows(current ? parseSizeLimitsConfig(current) : null, parseSizeLimitsConfig(proposed));
+            case 71:
+            case 72:
+            case 73:
+                return buildOracleBridgeChangeRows(current ? parseOracleBridgeParams(current) : null, parseOracleBridgeParams(proposed));
+            case 79:
+            case 81:
+            case 82:
+                return buildJettonBridgeChangeRows(current ? parseJettonBridgeParams(current) : null, parseJettonBridgeParams(proposed));
             default:
                 return buildFallbackChangeRows(current ?? null, proposed);
         }
@@ -645,6 +751,19 @@ function parseStakeLimits(cell: Cell): StakeLimitsPreview {
     };
 }
 
+function parseGlobalVersion(cell: Cell): GlobalVersion {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(8);
+    if (tag !== 0xc4) {
+        throw new Error(`Unexpected global version tag: ${tag}`);
+    }
+
+    return {
+        version: slice.loadUint(32),
+        capabilities: slice.loadUintBig(64)
+    };
+}
+
 const StoragePricesValue: DictionaryValue<StoragePrices> = {
     serialize: () => {
         throw new Error('StoragePrices serialization is not used');
@@ -732,6 +851,200 @@ function parseMsgForwardPrices(cell: Cell): MsgForwardPrices {
     };
 }
 
+function parseBlockConsensusConfig(cell: Cell): BlockConsensusConfig {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(8);
+
+    if (tag === 0xd6) {
+        return {
+            version: 'consensus_config',
+            flags: null,
+            use_quic: null,
+            new_catchain_ids: null,
+            round_candidates: slice.loadUint(32),
+            next_candidate_delay_ms: slice.loadUint(32),
+            consensus_timeout_ms: slice.loadUint(32),
+            fast_attempts: slice.loadUint(32),
+            attempt_duration: slice.loadUint(32),
+            catchain_max_deps: slice.loadUint(32),
+            max_block_bytes: slice.loadUint(32),
+            max_collated_bytes: slice.loadUint(32),
+            proto_version: null,
+            catchain_max_blocks_coeff: null
+        };
+    }
+
+    if (tag === 0xd7) {
+        return {
+            version: 'consensus_config_new',
+            flags: slice.loadUint(7),
+            use_quic: null,
+            new_catchain_ids: slice.loadBit(),
+            round_candidates: slice.loadUint(8),
+            next_candidate_delay_ms: slice.loadUint(32),
+            consensus_timeout_ms: slice.loadUint(32),
+            fast_attempts: slice.loadUint(32),
+            attempt_duration: slice.loadUint(32),
+            catchain_max_deps: slice.loadUint(32),
+            max_block_bytes: slice.loadUint(32),
+            max_collated_bytes: slice.loadUint(32),
+            proto_version: null,
+            catchain_max_blocks_coeff: null
+        };
+    }
+
+    if (tag === 0xd8) {
+        return {
+            version: 'consensus_config_v3',
+            flags: slice.loadUint(7),
+            use_quic: null,
+            new_catchain_ids: slice.loadBit(),
+            round_candidates: slice.loadUint(8),
+            next_candidate_delay_ms: slice.loadUint(32),
+            consensus_timeout_ms: slice.loadUint(32),
+            fast_attempts: slice.loadUint(32),
+            attempt_duration: slice.loadUint(32),
+            catchain_max_deps: slice.loadUint(32),
+            max_block_bytes: slice.loadUint(32),
+            max_collated_bytes: slice.loadUint(32),
+            proto_version: slice.loadUint(16),
+            catchain_max_blocks_coeff: null
+        };
+    }
+
+    if (tag === 0xd9) {
+        return {
+            version: 'consensus_config_v4',
+            flags: slice.loadUint(6),
+            use_quic: slice.loadBit(),
+            new_catchain_ids: slice.loadBit(),
+            round_candidates: slice.loadUint(8),
+            next_candidate_delay_ms: slice.loadUint(32),
+            consensus_timeout_ms: slice.loadUint(32),
+            fast_attempts: slice.loadUint(32),
+            attempt_duration: slice.loadUint(32),
+            catchain_max_deps: slice.loadUint(32),
+            max_block_bytes: slice.loadUint(32),
+            max_collated_bytes: slice.loadUint(32),
+            proto_version: slice.loadUint(16),
+            catchain_max_blocks_coeff: slice.loadUint(32)
+        };
+    }
+
+    throw new Error(`Unexpected block consensus config tag: ${tag}`);
+}
+
+function parseSizeLimitsConfig(cell: Cell): SizeLimitsConfig {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(8);
+    const base = {
+        max_msg_bits: slice.loadUint(32),
+        max_msg_cells: slice.loadUint(32),
+        max_library_cells: slice.loadUint(32),
+        max_vm_data_depth: slice.loadUint(16),
+        max_ext_msg_size: slice.loadUint(32),
+        max_ext_msg_depth: slice.loadUint(16)
+    };
+
+    if (tag === 0x01) {
+        return {
+            version: 'size_limits_config',
+            ...base,
+            max_acc_state_cells: null,
+            max_mc_acc_state_cells: null,
+            max_acc_public_libraries: null,
+            defer_out_queue_size_limit: null,
+            max_msg_extra_currencies: null,
+            max_acc_fixed_prefix_length: null,
+            acc_state_cells_for_storage_dict: null,
+            max_transaction_library_loads: null
+        };
+    }
+
+    if (tag === 0x02) {
+        return {
+            version: 'size_limits_config_v2',
+            ...base,
+            max_acc_state_cells: slice.loadUint(32),
+            max_mc_acc_state_cells: slice.loadUint(32),
+            max_acc_public_libraries: slice.loadUint(32),
+            defer_out_queue_size_limit: slice.loadUint(32),
+            max_msg_extra_currencies: slice.loadUint(32),
+            max_acc_fixed_prefix_length: slice.loadUint(8),
+            acc_state_cells_for_storage_dict: slice.loadUint(32),
+            max_transaction_library_loads: slice.loadMaybeUint(32)
+        };
+    }
+
+    throw new Error(`Unexpected size limits config tag: ${tag}`);
+}
+
+function parseOracleBridgeParams(cell: Cell): OracleBridgeParams {
+    const slice = cell.beginParse();
+    const bridge_address = slice.loadUintBig(256);
+    const oracle_multisig_address = slice.loadUintBig(256);
+    const oracles = slice.loadDict(Dictionary.Keys.BigUint(256), Dictionary.Values.BigUint(256));
+    const external_chain_address = slice.loadUintBig(256);
+
+    return {
+        bridge_address,
+        oracle_multisig_address,
+        oracle_count: oracles.size,
+        external_chain_address
+    };
+}
+
+function parseJettonBridgeParams(cell: Cell): JettonBridgeParams {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(8);
+
+    if (tag !== 0x00 && tag !== 0x01) {
+        throw new Error(`Unexpected jetton bridge params tag: ${tag}`);
+    }
+
+    const bridge_address = slice.loadUintBig(256);
+    const oracles_address = slice.loadUintBig(256);
+    const oracles = slice.loadDict(Dictionary.Keys.BigUint(256), Dictionary.Values.BigUint(256));
+    const state_flags = slice.loadUint(8);
+
+    if (tag === 0x00) {
+        return {
+            version: 'jetton_bridge_params_v0',
+            bridge_address,
+            oracles_address,
+            oracle_count: oracles.size,
+            state_flags,
+            burn_bridge_fee: slice.loadCoins(),
+            prices: null,
+            external_chain_address: null
+        };
+    }
+
+    return {
+        version: 'jetton_bridge_params_v1',
+        bridge_address,
+        oracles_address,
+        oracle_count: oracles.size,
+        state_flags,
+        burn_bridge_fee: null,
+        prices: parseJettonBridgePrices(slice.loadRef()),
+        external_chain_address: slice.loadUintBig(256)
+    };
+}
+
+function parseJettonBridgePrices(cell: Cell): JettonBridgePrices {
+    const slice = cell.beginParse();
+
+    return {
+        bridge_burn_fee: slice.loadCoins(),
+        bridge_mint_fee: slice.loadCoins(),
+        wallet_min_tons_for_storage: slice.loadCoins(),
+        wallet_gas_consumption: slice.loadCoins(),
+        minter_min_tons_for_storage: slice.loadCoins(),
+        discover_gas_consumption: slice.loadCoins()
+    };
+}
+
 function parseVsetWithIndexes(cell: Cell) {
     const slice = cell.beginParse();
     const tag = slice.loadUint(8);
@@ -771,10 +1084,23 @@ function parseNewConsensusConfigAll(cell: Cell): ConsensusConfigAll {
 
 function parseNewConsensusConfig(slice: Slice): ConsensusConfig {
     const tag = slice.loadUint(8);
+    if (tag === 0x21) {
+        return {
+            version: 'simplex_config',
+            flags: slice.loadUint(7),
+            use_quic: slice.loadBit(),
+            target_rate_ms: slice.loadUint(32),
+            slots_per_leader_window: slice.loadUint(32),
+            first_block_timeout_ms: slice.loadUint(32),
+            max_leader_window_desync: slice.loadUint(32)
+        };
+    }
+
     if (tag !== 0x22) {
         throw new Error(`Unexpected new consensus tag: ${tag}`);
     }
-    const flags = slice.loadUint(7);
+    const flags = slice.loadUint(6);
+    const enable_observers = slice.loadBit();
     const use_quic = slice.loadBit();
     const slots_per_leader_window = slice.loadUint(32);
     const noncritical = Object.fromEntries(
@@ -787,6 +1113,7 @@ function parseNewConsensusConfig(slice: Slice): ConsensusConfig {
     return {
         version: 'simplex_config_v2',
         flags,
+        enable_observers,
         use_quic,
         slots_per_leader_window,
         noncritical
@@ -906,6 +1233,296 @@ function buildStakeLimitChangeRows(current: StakeLimitsPreview | null, proposed:
             proposed: String(proposed.max_stake_factor)
         }
     ];
+}
+
+function buildGlobalVersionChangeRows(current: GlobalVersion | null, proposed: GlobalVersion): ChangeRow[] {
+    return [
+        {
+            label: 'TVM/network version',
+            current: current ? String(current.version) : 'Param not set',
+            proposed: String(proposed.version)
+        },
+        {
+            label: 'Capability mask',
+            current: current ? describeCapabilityMask(current.capabilities) : 'Param not set',
+            proposed: describeCapabilityMask(proposed.capabilities)
+        },
+        {
+            label: 'Capability delta',
+            current: current ? describeCapabilityDelta(current.capabilities, proposed.capabilities, false) : 'Param not set',
+            proposed: describeCapabilityDelta(current?.capabilities ?? 0n, proposed.capabilities, true)
+        }
+    ];
+}
+
+function buildBlockConsensusChangeRows(current: BlockConsensusConfig | null, proposed: BlockConsensusConfig): ChangeRow[] {
+    const rows: ChangeRow[] = [
+        {
+            label: 'Consensus schema',
+            current: current ? formatConfigVersion(current.version) : 'Param not set',
+            proposed: formatConfigVersion(proposed.version)
+        },
+        {
+            label: 'QUIC transport',
+            current: current ? formatNullableBoolean(current.use_quic) : 'Param not set',
+            proposed: formatNullableBoolean(proposed.use_quic)
+        },
+        {
+            label: 'New catchain IDs',
+            current: current ? formatNullableBoolean(current.new_catchain_ids) : 'Param not set',
+            proposed: formatNullableBoolean(proposed.new_catchain_ids)
+        },
+        {
+            label: 'Round candidates',
+            current: current ? formatCount(current.round_candidates) : 'Param not set',
+            proposed: formatCount(proposed.round_candidates)
+        },
+        {
+            label: 'Next candidate delay',
+            current: current ? formatMilliseconds(current.next_candidate_delay_ms) : 'Param not set',
+            proposed: formatMilliseconds(proposed.next_candidate_delay_ms)
+        },
+        {
+            label: 'Consensus timeout',
+            current: current ? formatMilliseconds(current.consensus_timeout_ms) : 'Param not set',
+            proposed: formatMilliseconds(proposed.consensus_timeout_ms)
+        },
+        {
+            label: 'Fast attempts',
+            current: current ? formatCount(current.fast_attempts) : 'Param not set',
+            proposed: formatCount(proposed.fast_attempts)
+        },
+        {
+            label: 'Attempt duration',
+            current: current ? formatCount(current.attempt_duration) : 'Param not set',
+            proposed: formatCount(proposed.attempt_duration)
+        },
+        {
+            label: 'Catchain max deps',
+            current: current ? formatCount(current.catchain_max_deps) : 'Param not set',
+            proposed: formatCount(proposed.catchain_max_deps)
+        },
+        {
+            label: 'Max block bytes',
+            current: current ? formatBytes(current.max_block_bytes) : 'Param not set',
+            proposed: formatBytes(proposed.max_block_bytes)
+        },
+        {
+            label: 'Max collated bytes',
+            current: current ? formatBytes(current.max_collated_bytes) : 'Param not set',
+            proposed: formatBytes(proposed.max_collated_bytes)
+        }
+    ];
+
+    if ((current?.proto_version ?? null) !== null || proposed.proto_version !== null) {
+        rows.push({
+            label: 'Protocol version',
+            current: current ? formatNullableNumber(current.proto_version) : 'Param not set',
+            proposed: formatNullableNumber(proposed.proto_version)
+        });
+    }
+
+    if ((current?.catchain_max_blocks_coeff ?? null) !== null || proposed.catchain_max_blocks_coeff !== null) {
+        rows.push({
+            label: 'Catchain max blocks coeff',
+            current: current ? formatNullableNumber(current.catchain_max_blocks_coeff) : 'Param not set',
+            proposed: formatNullableNumber(proposed.catchain_max_blocks_coeff)
+        });
+    }
+
+    return rows;
+}
+
+function buildSizeLimitsChangeRows(current: SizeLimitsConfig | null, proposed: SizeLimitsConfig): ChangeRow[] {
+    return [
+        {
+            label: 'Limits schema',
+            current: current ? formatConfigVersion(current.version) : 'Param not set (defaults)',
+            proposed: formatConfigVersion(proposed.version)
+        },
+        {
+            label: 'Max message bits',
+            current: current ? formatCount(current.max_msg_bits) : 'Param not set (defaults)',
+            proposed: formatCount(proposed.max_msg_bits)
+        },
+        {
+            label: 'Max message cells',
+            current: current ? formatCount(current.max_msg_cells) : 'Param not set (defaults)',
+            proposed: formatCount(proposed.max_msg_cells)
+        },
+        {
+            label: 'Max library cells',
+            current: current ? formatCount(current.max_library_cells) : 'Param not set (defaults)',
+            proposed: formatCount(proposed.max_library_cells)
+        },
+        {
+            label: 'Max VM data depth',
+            current: current ? formatCount(current.max_vm_data_depth) : 'Param not set (defaults)',
+            proposed: formatCount(proposed.max_vm_data_depth)
+        },
+        {
+            label: 'Max external message size',
+            current: current ? formatBytes(current.max_ext_msg_size) : 'Param not set (defaults)',
+            proposed: formatBytes(proposed.max_ext_msg_size)
+        },
+        {
+            label: 'Max external message depth',
+            current: current ? formatCount(current.max_ext_msg_depth) : 'Param not set (defaults)',
+            proposed: formatCount(proposed.max_ext_msg_depth)
+        },
+        {
+            label: 'Max account state cells',
+            current: current ? formatNullableCount(current.max_acc_state_cells, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.max_acc_state_cells, 'Not set in v1')
+        },
+        {
+            label: 'Max MC account state cells',
+            current: current ? formatNullableCount(current.max_mc_acc_state_cells, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.max_mc_acc_state_cells, 'Not set in v1')
+        },
+        {
+            label: 'Max account public libraries',
+            current: current ? formatNullableCount(current.max_acc_public_libraries, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.max_acc_public_libraries, 'Not set in v1')
+        },
+        {
+            label: 'Deferred out queue limit',
+            current: current ? formatNullableCount(current.defer_out_queue_size_limit, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.defer_out_queue_size_limit, 'Not set in v1')
+        },
+        {
+            label: 'Max message extra currencies',
+            current: current ? formatNullableCount(current.max_msg_extra_currencies, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.max_msg_extra_currencies, 'Not set in v1')
+        },
+        {
+            label: 'Max account fixed prefix length',
+            current: current ? formatNullableCount(current.max_acc_fixed_prefix_length, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.max_acc_fixed_prefix_length, 'Not set in v1')
+        },
+        {
+            label: 'Storage dict accounting cells',
+            current: current ? formatNullableCount(current.acc_state_cells_for_storage_dict, 'Not set in v1') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.acc_state_cells_for_storage_dict, 'Not set in v1')
+        },
+        {
+            label: 'Max transaction library loads',
+            current: current ? formatNullableCount(current.max_transaction_library_loads, 'Not set') : 'Param not set (defaults)',
+            proposed: formatNullableCount(proposed.max_transaction_library_loads, 'Not set')
+        }
+    ];
+}
+
+function buildOracleBridgeChangeRows(current: OracleBridgeParams | null, proposed: OracleBridgeParams): ChangeRow[] {
+    return [
+        {
+            label: 'Bridge address',
+            current: current ? formatMasterchainAddress(current.bridge_address) : 'Param not set',
+            proposed: formatMasterchainAddress(proposed.bridge_address)
+        },
+        {
+            label: 'Oracle multisig address',
+            current: current ? formatMasterchainAddress(current.oracle_multisig_address) : 'Param not set',
+            proposed: formatMasterchainAddress(proposed.oracle_multisig_address)
+        },
+        {
+            label: 'Oracle keys',
+            current: current ? formatPlural(current.oracle_count, 'oracle') : 'Param not set',
+            proposed: formatPlural(proposed.oracle_count, 'oracle')
+        },
+        {
+            label: 'External chain address',
+            current: current ? formatExternalChainAddress(current.external_chain_address) : 'Param not set',
+            proposed: formatExternalChainAddress(proposed.external_chain_address)
+        }
+    ];
+}
+
+function buildJettonBridgeChangeRows(current: JettonBridgeParams | null, proposed: JettonBridgeParams): ChangeRow[] {
+    const rows: ChangeRow[] = [
+        {
+            label: 'Bridge schema',
+            current: current ? formatConfigVersion(current.version) : 'Param not set',
+            proposed: formatConfigVersion(proposed.version)
+        },
+        {
+            label: 'Bridge address',
+            current: current ? formatMasterchainAddress(current.bridge_address) : 'Param not set',
+            proposed: formatMasterchainAddress(proposed.bridge_address)
+        },
+        {
+            label: 'Oracle multisig address',
+            current: current ? formatMasterchainAddress(current.oracles_address) : 'Param not set',
+            proposed: formatMasterchainAddress(proposed.oracles_address)
+        },
+        {
+            label: 'Oracle keys',
+            current: current ? formatPlural(current.oracle_count, 'oracle') : 'Param not set',
+            proposed: formatPlural(proposed.oracle_count, 'oracle')
+        },
+        {
+            label: 'State flags',
+            current: current ? formatCount(current.state_flags) : 'Param not set',
+            proposed: formatCount(proposed.state_flags)
+        }
+    ];
+
+    if ((current?.burn_bridge_fee ?? null) !== null || proposed.burn_bridge_fee !== null) {
+        rows.push({
+            label: 'Burn bridge fee',
+            current: current ? formatNullableTonAmount(current.burn_bridge_fee) : 'Param not set',
+            proposed: formatNullableTonAmount(proposed.burn_bridge_fee)
+        });
+    }
+
+    if (current?.prices || proposed.prices) {
+        rows.push(
+            {
+                label: 'Bridge burn fee',
+                current: current?.prices ? formatTonAmount(current.prices.bridge_burn_fee) : 'Not set',
+                proposed: proposed.prices ? formatTonAmount(proposed.prices.bridge_burn_fee) : 'Not set'
+            },
+            {
+                label: 'Bridge mint fee',
+                current: current?.prices ? formatTonAmount(current.prices.bridge_mint_fee) : 'Not set',
+                proposed: proposed.prices ? formatTonAmount(proposed.prices.bridge_mint_fee) : 'Not set'
+            },
+            {
+                label: 'Wallet storage reserve',
+                current: current?.prices ? formatTonAmount(current.prices.wallet_min_tons_for_storage) : 'Not set',
+                proposed: proposed.prices ? formatTonAmount(proposed.prices.wallet_min_tons_for_storage) : 'Not set'
+            },
+            {
+                label: 'Wallet gas consumption',
+                current: current?.prices ? formatTonAmount(current.prices.wallet_gas_consumption) : 'Not set',
+                proposed: proposed.prices ? formatTonAmount(proposed.prices.wallet_gas_consumption) : 'Not set'
+            },
+            {
+                label: 'Minter storage reserve',
+                current: current?.prices ? formatTonAmount(current.prices.minter_min_tons_for_storage) : 'Not set',
+                proposed: proposed.prices ? formatTonAmount(proposed.prices.minter_min_tons_for_storage) : 'Not set'
+            },
+            {
+                label: 'Discover gas consumption',
+                current: current?.prices ? formatTonAmount(current.prices.discover_gas_consumption) : 'Not set',
+                proposed: proposed.prices ? formatTonAmount(proposed.prices.discover_gas_consumption) : 'Not set'
+            }
+        );
+    }
+
+    if ((current?.external_chain_address ?? null) !== null || proposed.external_chain_address !== null) {
+        rows.push({
+            label: 'External chain address',
+            current: current?.external_chain_address !== null && current?.external_chain_address !== undefined
+                ? formatExternalChainAddress(current.external_chain_address)
+                : 'Not set',
+            proposed: proposed.external_chain_address !== null
+                ? formatExternalChainAddress(proposed.external_chain_address)
+                : 'Not set'
+        });
+    }
+
+    return rows;
 }
 
 function buildStoragePriceChangeRows(current: StoragePriceEntry[] | null, proposed: StoragePriceEntry[]): ChangeRow[] {
@@ -1061,11 +1678,25 @@ function consensusConfigEquals(left: ConsensusConfig | null, right: ConsensusCon
         return left === right;
     }
 
-    return left.version === right.version
-        && left.flags === right.flags
-        && left.use_quic === right.use_quic
-        && left.slots_per_leader_window === right.slots_per_leader_window
-        && recordEquals(left.noncritical, right.noncritical);
+    if (left.version !== right.version
+        || left.flags !== right.flags
+        || left.use_quic !== right.use_quic
+        || left.slots_per_leader_window !== right.slots_per_leader_window) {
+        return false;
+    }
+
+    if (left.version === 'simplex_config' && right.version === 'simplex_config') {
+        return left.target_rate_ms === right.target_rate_ms
+            && left.first_block_timeout_ms === right.first_block_timeout_ms
+            && left.max_leader_window_desync === right.max_leader_window_desync;
+    }
+
+    if (left.version === 'simplex_config_v2' && right.version === 'simplex_config_v2') {
+        return left.enable_observers === right.enable_observers
+            && recordEquals(left.noncritical, right.noncritical);
+    }
+
+    return false;
 }
 
 function recordEquals(left: Record<string, number>, right: Record<string, number>) {
@@ -1085,9 +1716,25 @@ function describeConsensusSide(side: ConsensusConfig | null): string {
     }
 
     const details = [
+        formatConfigVersion(side.version),
         `QUIC ${side.use_quic ? 'on' : 'off'}`,
         `${side.slots_per_leader_window} slots/window`
     ];
+
+    if (side.flags !== 0) {
+        details.push(`flags ${side.flags}`);
+    }
+
+    if (side.version === 'simplex_config') {
+        details.push(
+            `${side.target_rate_ms} ms target`,
+            `${side.first_block_timeout_ms} ms first timeout`,
+            `${side.max_leader_window_desync} max leader desync`
+        );
+        return details.join(', ');
+    }
+
+    details.push(`observers ${side.enable_observers ? 'on' : 'off'}`);
 
     if (typeof side.noncritical.target_rate_ms === 'number') {
         details.push(`${side.noncritical.target_rate_ms} ms target`);
@@ -1141,6 +1788,112 @@ function unwrapGasLimitsPrices(config: GasLimitsPrices): GasPrices | GasPricesEx
 
 function describeSpecialGasLimit(config: GasPrices | GasPricesExt) {
     return config.kind === 'gas_prices_ext' ? formatCount(config.special_gas_limit) : 'Not set';
+}
+
+const CAPABILITY_BIT_LABELS: Record<number, string> = {
+    9: 'full collated data'
+};
+
+function describeCapabilityMask(value: bigint): string {
+    const bits = getSetBitPositions(value);
+    const bitList = bits.length ? `bits ${bits.join(', ')}` : 'no bits set';
+    return `${formatCount(value)} (${formatHex(value)}, ${bitList})`;
+}
+
+function describeCapabilityDelta(current: bigint, proposed: bigint, proposedColumn: boolean): string {
+    const changed = current ^ proposed;
+
+    if (changed === 0n) {
+        return 'No capability mask change';
+    }
+
+    const added = proposed & changed;
+    const removed = current & changed;
+    const parts: string[] = [];
+
+    if (added !== 0n) {
+        parts.push(`adds ${describeCapabilityBits(added)}`);
+    }
+    if (removed !== 0n) {
+        parts.push(`removes ${describeCapabilityBits(removed)}`);
+    }
+
+    return proposedColumn ? parts.join('; ') : `Changed bits: ${describeCapabilityBits(changed)}`;
+}
+
+function describeCapabilityBits(mask: bigint): string {
+    return getSetBitPositions(mask)
+        .map((bit) => {
+            const numeric = 1n << BigInt(bit);
+            const label = CAPABILITY_BIT_LABELS[bit];
+            return label ? `+${numeric.toString()} ${label}` : `+${numeric.toString()} (bit ${bit})`;
+        })
+        .join(', ');
+}
+
+function getSetBitPositions(value: bigint): number[] {
+    const bits: number[] = [];
+
+    for (let bit = 0; bit < 64; bit += 1) {
+        if ((value & (1n << BigInt(bit))) !== 0n) {
+            bits.push(bit);
+        }
+    }
+
+    return bits;
+}
+
+function formatConfigVersion(value: string) {
+    return value.replace(/_/g, ' ');
+}
+
+function formatNullableBoolean(value: boolean | null) {
+    if (value === null) {
+        return 'Not set';
+    }
+    return value ? 'Enabled' : 'Disabled';
+}
+
+function formatNullableNumber(value: number | null) {
+    return value === null ? 'Not set' : formatCount(value);
+}
+
+function formatNullableCount(value: number | null, emptyLabel: string) {
+    return value === null ? emptyLabel : formatCount(value);
+}
+
+function formatNullableTonAmount(value: bigint | null) {
+    return value === null ? 'Not set' : formatTonAmount(value);
+}
+
+function formatMilliseconds(value: number) {
+    return `${formatCount(value)} ms`;
+}
+
+function formatBytes(value: number) {
+    const bytes = formatCount(value);
+
+    if (value >= 1024 * 1024 && value % 1024 === 0) {
+        return `${bytes} bytes (${formatFixedRatio(BigInt(value), 1024n * 1024n, 2)} MiB)`;
+    }
+
+    return `${bytes} bytes`;
+}
+
+function formatMasterchainAddress(value: bigint) {
+    return new Address(-1, Buffer.from(formatBits256(value), 'hex')).toRawString();
+}
+
+function formatExternalChainAddress(value: bigint) {
+    return `0x${formatBits256(value)}`;
+}
+
+function formatBits256(value: bigint) {
+    return value.toString(16).padStart(64, '0').toUpperCase();
+}
+
+function formatHex(value: bigint) {
+    return `0x${value.toString(16)}`;
 }
 
 function formatTonAmount(value: bigint): string {
