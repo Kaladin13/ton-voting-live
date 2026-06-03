@@ -1147,14 +1147,14 @@
       .change-grid {
         display: grid;
         grid-template-columns: minmax(150px, max-content) minmax(420px, max-content) minmax(420px, max-content);
-        gap: 1px;
+        gap: 0;
         margin: 24px;
         overflow-x: auto;
         overflow-y: hidden;
         overscroll-behavior-x: contain;
         border: 1px solid var(--line);
         border-radius: 12px;
-        background: var(--line);
+        background: #fff;
       }
 
       .change-row {
@@ -1162,12 +1162,14 @@
         padding: 0;
         border: 0;
         border-radius: 0;
-        background: var(--line);
+        background: transparent;
       }
 
       .change-label,
       .change-box {
         padding: 14px 16px;
+        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
         background: #fff;
       }
 
@@ -1181,7 +1183,13 @@
       }
 
       .change-box.proposed {
+        border-right: 0;
         background: var(--accent-soft);
+      }
+
+      .change-row:last-child > .change-label,
+      .change-row:last-child > .change-box {
+        border-bottom: 0;
       }
 
       .change-box .change-prefix {
