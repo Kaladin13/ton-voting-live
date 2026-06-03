@@ -544,13 +544,15 @@
       .change-grid {
         margin-top: 20px;
         display: grid;
+        grid-template-columns: minmax(120px, max-content) minmax(320px, max-content) minmax(320px, max-content);
         gap: 10px;
+        max-width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
       }
 
       .change-row {
-        display: grid;
-        grid-template-columns: minmax(120px, 180px) 1fr 1fr;
-        gap: 10px;
+        display: contents;
         padding: 14px;
         border-radius: 18px;
         background: rgba(29, 26, 23, 0.035);
@@ -1143,17 +1145,20 @@
       }
 
       .change-grid {
+        display: grid;
+        grid-template-columns: minmax(150px, max-content) minmax(420px, max-content) minmax(420px, max-content);
         gap: 1px;
         margin: 24px;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
         border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--line);
       }
 
       .change-row {
-        grid-template-columns: minmax(150px, 220px) 1fr 1fr;
-        gap: 1px;
+        display: contents;
         padding: 0;
         border: 0;
         border-radius: 0;
@@ -1358,8 +1363,8 @@
           margin-right: 16px;
         }
 
-        .change-row {
-          grid-template-columns: 1fr;
+        .change-grid {
+          grid-template-columns: minmax(140px, max-content) minmax(320px, max-content) minmax(320px, max-content);
         }
 
         .made-by {
