@@ -1,7 +1,7 @@
 import { TonApiClient } from '@ton-api/client';
 import { ContractAdapter } from '@ton-api/ton-adapter';
-import { Address, Cell, Dictionary, DictionaryValue, Slice } from '@ton/core';
-import { Config } from '../wrappers/Config';
+import { Address, Cell, Dictionary, DictionaryValue, Slice, TupleReader } from '@ton/core';
+import { Config, type ConfigProposalStatus } from '../wrappers/Config';
 import { getElectionsConf, getValidatorsConf, ValidatorDescriptionValue } from '../wrappers/ValidatorUtils';
 
 type ProposalSetup = {
@@ -272,8 +272,9 @@ type KnownConfigResolvedProposal = {
     hash: string,
     paramId: number,
     paramLabel: string,
-    previousValue: Cell,
-    acceptedValue: Cell,
+    previousValue?: Cell,
+    acceptedValue?: Cell,
+    acceptedValueHash?: string,
     summary: string,
     closedBecause: string
 };
@@ -311,6 +312,7 @@ const PARAM_LABELS: Record<number, string> = {
     25: 'Basechain message prices',
     29: 'Block consensus config',
     30: 'Consensus config',
+    31: 'Fundamental smart contracts',
     34: 'Current validator set',
     43: 'Account and message limits',
     71: 'ETH-TON outbound bridge',
@@ -342,6 +344,7 @@ const MTONGA_PROPOSAL_HASHES = [
     '8bd2fc0b4c5b8e50b9d69599cf0cefe50283f22a65cc5ca7ef4c88e0714e781b'
 ];
 const MTONGA_PROPOSAL_HASH_SET = new Set(MTONGA_PROPOSAL_HASHES);
+const KNOWN_PROPOSAL_FETCH_DELAY_MS = 250;
 
 const LAST_KNOWN_PROPOSAL = {
     hash: LAST_KNOWN_PROPOSAL_HASH,
@@ -420,12 +423,83 @@ const RECENT_ACCEPTED_CONFIG_PROPOSALS: KnownConfigResolvedProposal[] = [
         acceptedValue: cellFromBase64('te6cckEBAQEATAAAlNEAAAAAAAAAZAAAAAAAABoL3gAAAAAAQqqrAAAAAAAPQkAAAAAAAA9CQAAAAAAAACcQAAAAAACYloAAAAAABfXhAAAAAAA7msoAgyFv5Q=='),
         summary: 'This proposal was accepted and applied on-chain. Param 21 now matches the MTONGA basechain gas price reduction payload.',
         closedBecause: 'Acceptance was observed on 2026-05-01 07:08 UTC; the proposal is gone from the active get-method list, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '2f976d7a1954cc6105e0801910b6fbc6fedd9a5c91ef38cd5d9108ae7464781c',
+        paramId: 8,
+        paramLabel: PARAM_LABELS[8],
+        previousValue: cellFromBase64('te6cckEBAQEADwAAGsQAAAANAAAAAAAAAe7JzL0K'),
+        acceptedValueHash: 'b09a9e25aea9b7427e8de6518535fe969fa28f585e01c6f5ed0e99c299a25662',
+        summary: 'This proposal was accepted and applied on-chain. Param 8 now matches the MTONGA network version payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '15e455281b1624cc75ea853b15c640bd40d348b8043606b7b4e52214ee6f6f1d',
+        paramId: 72,
+        paramLabel: PARAM_LABELS[72],
+        previousValue: cellFromBase64('te6cckECEgEAAucAAcFNXAIQs12t2qIZ+sRZ26D977H65Ol6DQeXc5/gUNaUyg69f/nKcOBuniKoki9a51IRqdajSoCU6OFYe2Br27ZigAAAAAAAAAAAAAAAO1PL0s3RYLuTRLS7W9m6Pf6OkQfAAQIBIAILAgEgAwgCASAEBwIBSAUGAIG+2+c2GpWbVn11TX/3iY2ow5IoK2QRejDqKka8qkWtXfAAAAAAAAAAAAAAAAZ6U+Eww1UgnIcSN9AgitAkqELVzACBvslVY8EfLiBF3Kwp1PMarGQNwJ0+Fu7zZm/EqUQAi8MgAAAAAAAAAAAAAAAAvuVY2KQLCHtj09TGeBuG4HY4JTQAgb9fQALD8DkE8UHukzDGYbnFRUFMGcV0l0Q088+ngxMjDAAAAAAAAAAAAAAAAGQsWVXaTtzv3sYykECw2ShAE1LFAgFuCQoAgb79Epa1UOp1wKSZ05JSzPBuGJtX4hZXPP8P8rRp6uGLgAAAAAAAAAAAAAAAB/og/MRNUjrs6djjHGLNwmKLzCNsAIG+wXzu1Ifh9xAdJtcgc9OpkGwWc1E/tBtcjRFdrPfo4sgAAAAAAAAAAAAAAAfi41FoDUwl1PVb58PTaLTVS5BgZAIBWAwNAIG/X7BE4d+cHa1Ku+INz+IhIOcCQYgWeItfGbthwsz7nP4AAAAAAAAAAAAAAAGJk3sG1XFojKMubCzSM8esSSPAgwIBSA4PAIG+0oey6UWcFXU4bSHcKMaJNFcDgYDr4mCubGHFM9hSGJgAAAAAAAAAAAAAAABJm5w0zuOZ4jUGpl9e0XwhcNY+zAIBWBARAIG+aYwydA0xxrx9kg/7HTI3yBavpTkHIZC7xWAN4S/DESAAAAAAAAAAAAAAAA/ld1WCnh4wac2gQz8Qq0vsM/xYkACBvkSqmmnQp43vR38TXzS4pU9PitmGaxTlJLfDL3uUkQBgAAAAAAAAAAAAAAAAc+nRDIZXqeeWoMXzDD395+1bRRDMu9CA'),
+        acceptedValueHash: '33a68e52eadfaa0dd577bfd1d252bc4064b07c957b7ba107a064e34ef699b102',
+        summary: 'This proposal was accepted and applied on-chain. Param 72 now matches the MTONGA BSC-TON outbound bridge payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '3848920af070889fa220749347ec50e160c22b94bbbc430d32a5717b9be2718b',
+        paramId: 79,
+        paramLabel: PARAM_LABELS[79],
+        previousValue: cellFromBase64('te6cckECEwEAAwUAAsUBtSXrWzxfbm3NYGvue6B6DsgwNSEoSbfgVZSZwPa61U0hHxV0v2I9FHh3CMX91WXjKaJav6SQlemEQm8ZvPBJdIAAAAAAAAAAAAAAAABZkbSVtqbctXj6lyJM0V6G9s154sABEgIBIAIRAgEgAwwCASAECwIBIAUGAIG/CbgwhUMYn2yHU343dcezKkvme3cyFJB7SHVY3FXhU9gAAAAAAAAAAAAAAAIsGpdN2JfQe6dn1Q0grZWLGV+pvgIBIAcKAgEgCAkAgb6wTxxyKMBuaRoElV/J+Cpjml/hBI75zkgUZUL1bCVj8AAAAAAAAAAAAAAAB6DTxC95W6LbcH1CGt0x3tqfH+wYAIG+rHBg7ICT4fRgYFzvSBkUlzqipS9wfLBT7Ik0F9I2H4AAAAAAAAAAAAAAAAMVTmQMVtAjqYiQQmok0ady9aOLKACBvuPG9uJvTJvcMq9AENwcv+F2Ds2MK6qNRDT23yGCaFWgAAAAAAAAAAAAAAAEQakxkag0h3kXzSwHNaCeOj4A/ZQAgb9cGndssE4S7bcVNIHMFrkiUrizWnT5vI9yfOYIEc45BgAAAAAAAAAAAAAAAdcS6yzbXhkM5DgpcXb79xP5dzOVAgEgDRACASAODwCBvw9fhTm/NqURBT4FuwJczZWe39F575hmpFtt8KVniCwIAAAAAAAAAAAAAAABDkxuMKeNKjBZpVAjNVjJ/URzwhoAgb8RuD3rFDyNUpuXtBAnWTykKVAuY7UKLrye419st2b25AAAAAAAAAAAAAAAAlUrmS7Amiwb/77tvRUhnpfLLMXeAIG/acxhhr+dznhtppGVCg+kFqjL65rOddHn1mwyRj1rYgQAAAAAAAAAAAAAAACRfpTwfZ9v81WVbRpRYN+1/m9YhwCDv9Puq7M91Ok9wKCG3vFOmiL6D1LDuC2RgNLJo6HSodzQAAAAAAAAAAAAAAAANq8bD78K9dOfIMgnp9lT6WUCKLFAADBDuaygBDuaygA3oSAD5OHAQF9eEAOYloB3RfSM'),
+        acceptedValueHash: 'dc78c8af83ae38e7ff6dba29945e52f1311b65e4aae4249be965fc068ac1ecc1',
+        summary: 'This proposal was accepted and applied on-chain. Param 79 now matches the MTONGA ETH-TON inbound bridge payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '68271d5c602dcaef63ff2da1e34b035283b7f109520eb1c7b5f9dff7c4296693',
+        paramId: 43,
+        paramLabel: PARAM_LABELS[43],
+        acceptedValueHash: '78106e91fe6acabc49c5e3d0387e7b0ccd39010b13c9373399f36f000bf723f7',
+        summary: 'This proposal was accepted and applied on-chain. Param 43 now matches the MTONGA account and message limits payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: 'caa1e83282b5ae11f6c0dcd7a8d488c4bd57dd00424e6985f1c2a10e81a70a06',
+        paramId: 29,
+        paramLabel: PARAM_LABELS[29],
+        previousValue: cellFromBase64('te6cckEBAQEAJwAAStkBAwAAB9AAAD6AAAAAAwAAAAgAAAAEACAAAAAgAAAABQAAJxAn4FSj'),
+        acceptedValueHash: '3fdebb33c922ab4eae67d3ad349eda3e9dcd5da965d86138a6f8e678e1523c64',
+        summary: 'This proposal was accepted and applied on-chain. Param 29 now matches the MTONGA block consensus config payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: 'd781f91a71c07870ee7f3fc1847e80919e62bb5096553e6c32aba2f98d7733d8',
+        paramId: 30,
+        paramLabel: PARAM_LABELS[30],
+        previousValue: cellFromBase64('te6cckEBBwEALwACAxDgAQEBDSIBAAAABMACAgHJAwYCAdQEBQAJAAAAZCAACQAAAK8gAAm6AAACWSmlmc8='),
+        acceptedValueHash: 'def936322a753aa4deb2d9a9184e5cb572fcd25db60e182f020b4dae00c77ba3',
+        summary: 'This proposal was accepted and applied on-chain. Param 30 now matches the MTONGA consensus config payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: 'e9127c318513a711a4c2335d7da4507334bd8385c6a8aabee414de86d87a7c7a',
+        paramId: 71,
+        paramLabel: PARAM_LABELS[71],
+        previousValue: cellFromBase64('te6cckECEgEAAucAAcHdJMSh8riPi3BTUTtcxsWjG8RLKnLctNjAM4rw8NN+xTubv9CtUzi5cA8IMzgO4X1GPlHBrmce5vCJAb3ombICgAAAAAAAAAAAAAAALBbDlQ2Ep+JHrvGOnbn5bN8j73jAAQIBIAILAgEgAwgCASAEBwIBSAUGAIG+2+c2GpWbVn11TX/3iY2ow5IoK2QRejDqKka8qkWtXfAAAAAAAAAAAAAAAAZ6U+Eww1UgnIcSN9AgitAkqELVzACBvslVY8EfLiBF3Kwp1PMarGQNwJ0+Fu7zZm/EqUQAi8MgAAAAAAAAAAAAAAAAvuVY2KQLCHtj09TGeBuG4HY4JTQAgb9fQALD8DkE8UHukzDGYbnFRUFMGcV0l0Q088+ngxMjDAAAAAAAAAAAAAAAAGQsWVXaTtzv3sYykECw2ShAE1LFAgFuCQoAgb79Epa1UOp1wKSZ05JSzPBuGJtX4hZXPP8P8rRp6uGLgAAAAAAAAAAAAAAAB/og/MRNUjrs6djjHGLNwmKLzCNsAIG+wXzu1Ifh9xAdJtcgc9OpkGwWc1E/tBtcjRFdrPfo4sgAAAAAAAAAAAAAAAfi41FoDUwl1PVb58PTaLTVS5BgZAIBWAwNAIG/X7BE4d+cHa1Ku+INz+IhIOcCQYgWeItfGbthwsz7nP4AAAAAAAAAAAAAAAGJk3sG1XFojKMubCzSM8esSSPAgwIBSA4PAIG+0oey6UWcFXU4bSHcKMaJNFcDgYDr4mCubGHFM9hSGJgAAAAAAAAAAAAAAABJm5w0zuOZ4jUGpl9e0XwhcNY+zAIBWBARAIG+aYwydA0xxrx9kg/7HTI3yBavpTkHIZC7xWAN4S/DESAAAAAAAAAAAAAAAA/ld1WCnh4wac2gQz8Qq0vsM/xYkACBvkSqmmnQp43vR38TXzS4pU9PitmGaxTlJLfDL3uUkQBgAAAAAAAAAAAAAAAAc+nRDIZXqeeWoMXzDD395+1bRRBbD7T+'),
+        acceptedValueHash: '2dd37d01b16a08b692d9e6fe052a8ac7313f27dc02739d309849cb8291ac6242',
+        summary: 'This proposal was accepted and applied on-chain. Param 71 now matches the MTONGA ETH-TON outbound bridge payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
+    },
+    {
+        hash: '8bd2fc0b4c5b8e50b9d69599cf0cefe50283f22a65cc5ca7ef4c88e0714e781b',
+        paramId: 31,
+        paramLabel: PARAM_LABELS[31],
+        previousValue: cellFromBase64('te6cckEBDgEA+AABAcABAgEgAgsCASADCgIBIAQHAgFIBQYAA99wAEG+9ev/zlOHA3TxFUSRetc6kI1OtRpUBKdHCsPbA17dsxQCAVgICQBBvtmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmcAEG+3N3+hWqZxcuAeEGZwHcL6jHyjg1zOPc3hEgN70TNkBQAQr+NXAIQs12t2qIZ+sRZ26D977H65Ol6DQeXc5/gUNaUygIBWAwNAEG/ekmJQ+VxHxbgpqJ2uY2LRjeIllTluWmxgGcV4eGm/YsAQb9Vr7RxN7xi+L9lCwD5yg91WmOGv8qmlniDDwvSA+yY0R+B460='),
+        acceptedValueHash: '424dbee8b8162c4801636b9aaf982344281c5a210c05865c634ab60c2d6f1ae4',
+        summary: 'This proposal was accepted and applied on-chain. Param 31 now matches the MTONGA fundamental smart contracts payload.',
+        closedBecause: 'Acceptance was observed on 2026-06-05; the proposal is gone from get_proposal, and the live config value now matches its proposed state.'
     }
 ];
 
 export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const cfg = await config.getConfig();
-    const proposals = await config.getListedProposals();
+    const proposals = await fetchActiveConfigProposals();
     const voteSetup = parseVoteSetup(getRequiredParam(cfg, 11));
     const elections = getElectionsConf(cfg);
     const validatorLimits = getValidatorsConf(cfg);
@@ -433,7 +507,6 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const currentVsetHash = currentVsetCell.hash().toString('hex');
     const currentVset = parseVsetWithIndexes(currentVsetCell);
     const thresholdWeight = (currentVset.total_weight * 3n) / 4n;
-    const currentConsensus = parseNewConsensusConfigAll(getRequiredParam(cfg, 30));
     const activeProposalHashes = new Set(proposals.map((proposal) => toHex(proposal.proposalHash)));
     const activeProposals = proposals.map((proposal) => {
         const hash = toHex(proposal.proposalHash);
@@ -482,7 +555,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
             changeRows
         };
     }).sort(compareProposalPriority);
-    const resolvedProposals = buildResolvedProposals(activeProposalHashes, cfg, currentConsensus);
+    const resolvedProposals = buildResolvedProposals(activeProposalHashes, cfg);
 
     return {
         fetchedAt: new Date().toISOString(),
@@ -509,15 +582,123 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     };
 }
 
+async function fetchActiveConfigProposals(): Promise<ConfigProposalStatus[]> {
+    try {
+        return await config.getListedProposals();
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`list_proposals failed (${reason}); falling back to known proposal hashes`);
+        return fetchKnownActiveConfigProposals();
+    }
+}
+
+async function fetchKnownActiveConfigProposals(): Promise<ConfigProposalStatus[]> {
+    const proposals: ConfigProposalStatus[] = [];
+
+    for (const [index, hash] of MTONGA_PROPOSAL_HASHES.entries()) {
+        const proposal = await fetchKnownConfigProposalWithRetry(hash);
+
+        if (proposal) {
+            proposals.push(proposal);
+        }
+
+        if (index < MTONGA_PROPOSAL_HASHES.length - 1) {
+            await delay(KNOWN_PROPOSAL_FETCH_DELAY_MS);
+        }
+    }
+
+    return proposals;
+}
+
+async function fetchKnownConfigProposalWithRetry(hash: string): Promise<ConfigProposalStatus | null> {
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+            return await fetchKnownConfigProposal(hash);
+        } catch (error) {
+            if (attempt === maxAttempts) {
+                throw error;
+            }
+
+            await delay(1_000 * attempt);
+        }
+    }
+
+    return null;
+}
+
+async function fetchKnownConfigProposal(hash: string): Promise<ConfigProposalStatus | null> {
+    const result = await tonApi.blockchain.execGetMethodForBlockchainAccount(
+        MAINNET_CONFIG_ADDRESS,
+        'get_proposal',
+        { args: [`0x${hash}`] }
+    );
+
+    if (!result.success || result.exitCode !== 0) {
+        throw new Error(`get_proposal ${hash} failed with exit code ${result.exitCode}`);
+    }
+
+    const stack = new TupleReader(result.stack);
+    const proposalTuple = stack.readTupleOpt();
+
+    if (!proposalTuple) {
+        return null;
+    }
+
+    return parseConfigProposalStatus(hash, proposalTuple);
+}
+
+function parseConfigProposalStatus(hash: string, proposalTuple: TupleReader): ConfigProposalStatus {
+    const expires = proposalTuple.readNumber();
+    const critical = proposalTuple.readBoolean();
+    const paramTuple = proposalTuple.readTuple();
+    const paramId = paramTuple.readNumber();
+    const value = paramTuple.readCell();
+    const curHash = paramTuple.readBigNumber();
+    const vsetId = proposalTuple.readBigNumber();
+    const voters = proposalTuple.readLispList().map((voter) => {
+        if (voter.type !== 'int') {
+            throw new Error(`Unexpected voter tuple item type: ${voter.type}`);
+        }
+
+        return Number(voter.value);
+    });
+    const weightRemaining = proposalTuple.readBigNumber();
+    const roundsRemaining = proposalTuple.readNumber();
+    const wins = proposalTuple.readNumber();
+    const losses = proposalTuple.readNumber();
+
+    return {
+        proposalHash: BigInt(`0x${hash}`),
+        expires,
+        critical,
+        param_id: paramId,
+        value,
+        cur_hash: curHash,
+        vset_id: vsetId,
+        voters,
+        weight_remaining: weightRemaining,
+        rounds_remaining: roundsRemaining,
+        wins,
+        losses
+    };
+}
+
+function delay(ms: number) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
 function buildResolvedProposals(
     activeProposalHashes: Set<string>,
-    currentConfig: MapLikeConfig,
-    currentConsensus: ConsensusConfigAll
+    currentConfig: MapLikeConfig
 ): ResolvedProposal[] {
     const resolved = RECENT_ACCEPTED_CONFIG_PROPOSALS
         .map((proposal) => buildResolvedConfigProposal(proposal, activeProposalHashes, currentConfig))
         .filter((proposal): proposal is ResolvedProposal => proposal !== null);
-    const consensusProposal = buildResolvedConsensusProposal(activeProposalHashes, currentConsensus);
+    const consensusProposal = buildResolvedConsensusProposal(activeProposalHashes);
 
     if (consensusProposal) {
         resolved.push(consensusProposal);
@@ -536,7 +717,14 @@ function buildResolvedConfigProposal(
     }
 
     const currentValue = currentConfig.get(proposal.paramId);
-    if (!currentValue?.equals(proposal.acceptedValue)) {
+    const acceptedValue = proposal.acceptedValue ?? currentValue;
+    const acceptedValueHash = proposal.acceptedValueHash ?? proposal.acceptedValue?.hash().toString('hex');
+
+    if (!currentValue || !acceptedValue || !acceptedValueHash) {
+        return null;
+    }
+
+    if (currentValue.hash().toString('hex') !== acceptedValueHash) {
         return null;
     }
 
@@ -548,16 +736,12 @@ function buildResolvedConfigProposal(
         status: 'accepted',
         summary: proposal.summary,
         closedBecause: proposal.closedBecause,
-        changeRows: buildConfigChangeRows(proposal.paramId, proposal.previousValue, proposal.acceptedValue)
+        changeRows: buildConfigChangeRows(proposal.paramId, proposal.previousValue, acceptedValue)
     };
 }
 
-function buildResolvedConsensusProposal(activeProposalHashes: Set<string>, currentConsensus: ConsensusConfigAll): ResolvedProposal | null {
+function buildResolvedConsensusProposal(activeProposalHashes: Set<string>): ResolvedProposal | null {
     if (activeProposalHashes.has(LAST_KNOWN_PROPOSAL.hash)) {
-        return null;
-    }
-
-    if (!consensusConfigAllEquals(currentConsensus, LAST_KNOWN_PROPOSAL.acceptedValue)) {
         return null;
     }
 
@@ -567,8 +751,8 @@ function buildResolvedConsensusProposal(activeProposalHashes: Set<string>, curre
         paramLabel: LAST_KNOWN_PROPOSAL.paramLabel,
         source: getProposalSource(LAST_KNOWN_PROPOSAL.hash),
         status: 'accepted',
-        summary: 'This proposal was accepted and applied on-chain. Param 30 now matches the payload that previously appeared in active voting.',
-        closedBecause: 'The proposal is gone from the active get-method list, and the live config value now matches its proposed state.',
+        summary: 'This proposal was accepted and applied on-chain. It is kept as a historical outcome even though Param 30 has since been updated again.',
+        closedBecause: 'The proposal is gone from get_proposal, so it is no longer an active voting item.',
         changeRows: buildConsensusChangeRows(LAST_KNOWN_PROPOSAL.previousValue, LAST_KNOWN_PROPOSAL.acceptedValue)
     };
 }
@@ -657,6 +841,8 @@ function buildConfigChangeRows(paramId: number, current: Cell | undefined, propo
                 return buildBlockConsensusChangeRows(current ? parseBlockConsensusConfig(current) : null, parseBlockConsensusConfig(proposed));
             case 30:
                 return buildConsensusChangeRows(current ? parseNewConsensusConfigAll(current) : null, parseNewConsensusConfigAll(proposed));
+            case 31:
+                return buildFundamentalSmcChangeRows(current ? parseFundamentalSmcAddresses(current) : null, parseFundamentalSmcAddresses(proposed));
             case 43:
                 return buildSizeLimitsChangeRows(current ? parseSizeLimitsConfig(current) : null, parseSizeLimitsConfig(proposed));
             case 71:
@@ -686,6 +872,11 @@ function getRequiredParam(configDict: MapLikeConfig, id: number): Cell {
 
 type MapLikeConfig = {
     get(key: number): Cell | undefined
+};
+
+const FUNDAMENTAL_SMC_VALUE: DictionaryValue<boolean> = {
+    serialize: (_source, _builder) => {},
+    parse: (_source) => true
 };
 
 function parseVoteSetup(cell: Cell): VoteSetup {
@@ -771,6 +962,13 @@ function parseGlobalVersion(cell: Cell): GlobalVersion {
         version: slice.loadUint(32),
         capabilities: slice.loadUintBig(64)
     };
+}
+
+function parseFundamentalSmcAddresses(cell: Cell): string[] {
+    const dictionary = cell.beginParse().loadDict(Dictionary.Keys.BigUint(256), FUNDAMENTAL_SMC_VALUE);
+    return dictionary.keys()
+        .map((address) => formatMasterchainAddress(address))
+        .sort();
 }
 
 const StoragePricesValue: DictionaryValue<StoragePrices> = {
@@ -1264,6 +1462,36 @@ function buildGlobalVersionChangeRows(current: GlobalVersion | null, proposed: G
     ];
 }
 
+function buildFundamentalSmcChangeRows(current: string[] | null, proposed: string[]): ChangeRow[] {
+    const currentSet = new Set(current ?? []);
+    const proposedSet = new Set(proposed);
+    const added = proposed.filter((address) => !currentSet.has(address));
+    const removed = (current ?? []).filter((address) => !proposedSet.has(address));
+
+    return [
+        {
+            label: 'Fundamental address count',
+            current: current ? formatPlural(current.length, 'address') : 'Param not set',
+            proposed: formatPlural(proposed.length, 'address')
+        },
+        {
+            label: 'Added addresses',
+            current: 'None',
+            proposed: added.length ? added.join('\n') : 'None'
+        },
+        {
+            label: 'Removed addresses',
+            current: removed.length ? removed.join('\n') : 'None',
+            proposed: 'None'
+        },
+        {
+            label: 'Full address set',
+            current: current ? current.join('\n') : 'Param not set',
+            proposed: proposed.join('\n')
+        }
+    ];
+}
+
 function buildBlockConsensusChangeRows(current: BlockConsensusConfig | null, proposed: BlockConsensusConfig): ChangeRow[] {
     const rows: ChangeRow[] = [
         {
@@ -1669,54 +1897,6 @@ function buildFallbackChangeRows(current: Cell | null, proposed: Cell, note?: st
     });
 
     return rows;
-}
-
-function consensusConfigAllEquals(left: ConsensusConfigAll | null, right: ConsensusConfigAll | null) {
-    if (!left || !right) {
-        return left === right;
-    }
-
-    return left.hasMc === right.hasMc
-        && left.hasShard === right.hasShard
-        && consensusConfigEquals(left.mc, right.mc)
-        && consensusConfigEquals(left.shard, right.shard);
-}
-
-function consensusConfigEquals(left: ConsensusConfig | null, right: ConsensusConfig | null) {
-    if (!left || !right) {
-        return left === right;
-    }
-
-    if (left.version !== right.version
-        || left.flags !== right.flags
-        || left.use_quic !== right.use_quic
-        || left.slots_per_leader_window !== right.slots_per_leader_window) {
-        return false;
-    }
-
-    if (left.version === 'simplex_config' && right.version === 'simplex_config') {
-        return left.target_rate_ms === right.target_rate_ms
-            && left.first_block_timeout_ms === right.first_block_timeout_ms
-            && left.max_leader_window_desync === right.max_leader_window_desync;
-    }
-
-    if (left.version === 'simplex_config_v2' && right.version === 'simplex_config_v2') {
-        return left.enable_observers === right.enable_observers
-            && recordEquals(left.noncritical, right.noncritical);
-    }
-
-    return false;
-}
-
-function recordEquals(left: Record<string, number>, right: Record<string, number>) {
-    const leftKeys = Object.keys(left).sort();
-    const rightKeys = Object.keys(right).sort();
-
-    if (leftKeys.length !== rightKeys.length) {
-        return false;
-    }
-
-    return leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key]);
 }
 
 function describeConsensusSide(side: ConsensusConfig | null): string {
