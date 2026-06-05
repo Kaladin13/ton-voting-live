@@ -72,10 +72,10 @@ async function getSnapshotResponse() {
 }
 
 const server = createServer(async (req, res) => {
-    const url = req.url ?? '/';
+    const { pathname } = new URL(req.url ?? '/', 'http://localhost');
 
     try {
-        if (url === '/api/status') {
+        if (pathname === '/api/status') {
             const { snapshot, cacheStatus } = await getSnapshotResponse();
             res.writeHead(200, {
                 'Content-Type': CONTENT_TYPES['.json'],
@@ -87,7 +87,7 @@ const server = createServer(async (req, res) => {
             return;
         }
 
-        if (url === '/healthz') {
+        if (pathname === '/healthz') {
             res.writeHead(200, {
                 'Content-Type': 'text/plain; charset=utf-8',
                 'Cache-Control': 'no-store'
@@ -96,7 +96,7 @@ const server = createServer(async (req, res) => {
             return;
         }
 
-        const filePath = url === '/' ? INDEX_HTML : join(__dirname, url);
+        const filePath = pathname === '/' ? INDEX_HTML : join(__dirname, pathname);
         const content = await readFile(filePath);
         res.writeHead(200, {
             'Content-Type': CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream',
@@ -104,7 +104,7 @@ const server = createServer(async (req, res) => {
         });
         res.end(content);
     } catch (error) {
-        if (url === '/api/status') {
+        if (pathname === '/api/status') {
             if (cachedSnapshot) {
                 res.writeHead(200, {
                     'Content-Type': CONTENT_TYPES['.json'],
