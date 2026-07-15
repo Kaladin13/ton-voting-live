@@ -191,6 +191,43 @@ type JettonBridgeParams = {
     external_chain_address: bigint | null
 };
 
+type WorkchainFormat = {
+    kind: 'basic',
+    vm_version: number,
+    vm_mode: bigint
+} | {
+    kind: 'extended',
+    min_addr_len: number,
+    max_addr_len: number,
+    addr_len_step: number,
+    workchain_type_id: number
+};
+
+type WorkchainSplitMergeTimings = {
+    split_merge_delay: number,
+    split_merge_interval: number,
+    min_split_merge_interval: number,
+    max_split_merge_delay: number
+};
+
+type WorkchainDescription = {
+    version: 'workchain' | 'workchain_v2',
+    enabled_since: number,
+    actual_min_split: number,
+    min_split: number,
+    max_split: number,
+    basic: boolean,
+    active: boolean,
+    accept_msgs: boolean,
+    flags: number,
+    zerostate_root_hash: string,
+    zerostate_file_hash: string,
+    workchain_version: number,
+    format: WorkchainFormat,
+    split_merge_timings: WorkchainSplitMergeTimings | null,
+    persistent_state_split_depth: number | null
+};
+
 type ChangeRow = {
     label: string,
     current: string,
@@ -301,6 +338,7 @@ const NONCRITICAL_PARAM_NAMES: Record<number, string> = {
 const PARAM_LABELS: Record<number, string> = {
     8: 'Network version',
     11: 'Voting rules',
+    12: 'Workchain config',
     14: 'Block reward',
     15: 'Election timing',
     16: 'Validator limits',
@@ -341,7 +379,8 @@ const MTONGA_PROPOSAL_HASHES = [
     'caa1e83282b5ae11f6c0dcd7a8d488c4bd57dd00424e6985f1c2a10e81a70a06',
     'd781f91a71c07870ee7f3fc1847e80919e62bb5096553e6c32aba2f98d7733d8',
     'e9127c318513a711a4c2335d7da4507334bd8385c6a8aabee414de86d87a7c7a',
-    '8bd2fc0b4c5b8e50b9d69599cf0cefe50283f22a65cc5ca7ef4c88e0714e781b'
+    '8bd2fc0b4c5b8e50b9d69599cf0cefe50283f22a65cc5ca7ef4c88e0714e781b',
+    'eb942bffeb937bc18cec457864e980e4e08e44de9fca48513ccb27d138a545e8'
 ];
 const MTONGA_PROPOSAL_HASH_SET = new Set(MTONGA_PROPOSAL_HASHES);
 const KNOWN_PROPOSAL_FETCH_DELAY_MS = 250;
@@ -821,6 +860,8 @@ function buildConfigChangeRows(paramId: number, current: Cell | undefined, propo
                 return buildGlobalVersionChangeRows(current ? parseGlobalVersion(current) : null, parseGlobalVersion(proposed));
             case 11:
                 return buildVoteSetupChangeRows(current ? parseVoteSetup(current) : null, parseVoteSetup(proposed));
+            case 12:
+                return buildWorkchainChangeRows(current ? parseWorkchains(current) : null, parseWorkchains(proposed));
             case 14:
                 return buildBlockCreateFeeChangeRows(current ? parseBlockCreateFees(current) : null, parseBlockCreateFees(proposed));
             case 15:
@@ -878,6 +919,101 @@ const FUNDAMENTAL_SMC_VALUE: DictionaryValue<boolean> = {
     serialize: (_source, _builder) => {},
     parse: (_source) => true
 };
+
+const WORKCHAIN_DESCRIPTION_VALUE: DictionaryValue<WorkchainDescription> = {
+    serialize: () => {
+        throw new Error('Workchain description serialization is not used');
+    },
+    parse: parseWorkchainDescription
+};
+
+function parseWorkchains(cell: Cell): Dictionary<number, WorkchainDescription> {
+    return cell.beginParse().loadDict(Dictionary.Keys.Int(32), WORKCHAIN_DESCRIPTION_VALUE);
+}
+
+function parseWorkchainDescription(source: Slice): WorkchainDescription {
+    const tag = source.loadUint(8);
+    if (tag !== 0xa6 && tag !== 0xa7) {
+        throw new Error(`Unexpected workchain description tag: ${tag}`);
+    }
+
+    const enabled_since = source.loadUint(32);
+    const actual_min_split = source.loadUint(8);
+    const min_split = source.loadUint(8);
+    const max_split = source.loadUint(8);
+    const basic = source.loadBit();
+    const active = source.loadBit();
+    const accept_msgs = source.loadBit();
+    const flags = source.loadUint(13);
+    const zerostate_root_hash = source.loadBuffer(32).toString('hex');
+    const zerostate_file_hash = source.loadBuffer(32).toString('hex');
+    const workchain_version = source.loadUint(32);
+    const format = parseWorkchainFormat(source, basic);
+
+    let split_merge_timings: WorkchainSplitMergeTimings | null = null;
+    let persistent_state_split_depth: number | null = null;
+
+    if (tag === 0xa7) {
+        const timingsTag = source.loadUint(4);
+        if (timingsTag !== 0) {
+            throw new Error(`Unexpected workchain split/merge timings tag: ${timingsTag}`);
+        }
+
+        split_merge_timings = {
+            split_merge_delay: source.loadUint(32),
+            split_merge_interval: source.loadUint(32),
+            min_split_merge_interval: source.loadUint(32),
+            max_split_merge_delay: source.loadUint(32)
+        };
+        persistent_state_split_depth = source.loadUint(8);
+    }
+
+    return {
+        version: tag === 0xa7 ? 'workchain_v2' : 'workchain',
+        enabled_since,
+        actual_min_split,
+        min_split,
+        max_split,
+        basic,
+        active,
+        accept_msgs,
+        flags,
+        zerostate_root_hash,
+        zerostate_file_hash,
+        workchain_version,
+        format,
+        split_merge_timings,
+        persistent_state_split_depth
+    };
+}
+
+function parseWorkchainFormat(source: Slice, basic: boolean): WorkchainFormat {
+    const tag = source.loadUint(4);
+
+    if (basic) {
+        if (tag !== 1) {
+            throw new Error(`Unexpected basic workchain format tag: ${tag}`);
+        }
+
+        return {
+            kind: 'basic',
+            vm_version: source.loadInt(32),
+            vm_mode: source.loadUintBig(64)
+        };
+    }
+
+    if (tag !== 0) {
+        throw new Error(`Unexpected extended workchain format tag: ${tag}`);
+    }
+
+    return {
+        kind: 'extended',
+        min_addr_len: source.loadUint(12),
+        max_addr_len: source.loadUint(12),
+        addr_len_step: source.loadUint(12),
+        workchain_type_id: source.loadUint(32)
+    };
+}
 
 function parseVoteSetup(cell: Cell): VoteSetup {
     const slice = cell.beginParse();
@@ -1325,6 +1461,194 @@ function parseNewConsensusConfig(slice: Slice): ConsensusConfig {
         slots_per_leader_window,
         noncritical
     };
+}
+
+function buildWorkchainChangeRows(
+    current: Dictionary<number, WorkchainDescription> | null,
+    proposed: Dictionary<number, WorkchainDescription>
+): ChangeRow[] {
+    const workchainIds = Array.from(new Set([
+        ...(current ? Array.from(current.keys()) : []),
+        ...Array.from(proposed.keys())
+    ])).sort((left, right) => left - right);
+    const rows: ChangeRow[] = [];
+
+    for (const workchainId of workchainIds) {
+        const currentWorkchain = current?.get(workchainId);
+        const proposedWorkchain = proposed.get(workchainId);
+        const labelPrefix = `Workchain ${workchainId}`;
+
+        if (!currentWorkchain && proposedWorkchain) {
+            rows.push({
+                label: labelPrefix,
+                current: 'Not configured',
+                proposed: describeWorkchain(proposedWorkchain)
+            });
+            continue;
+        }
+
+        if (currentWorkchain && !proposedWorkchain) {
+            rows.push({
+                label: labelPrefix,
+                current: describeWorkchain(currentWorkchain),
+                proposed: 'Removed from config'
+            });
+            continue;
+        }
+
+        if (!currentWorkchain || !proposedWorkchain) {
+            continue;
+        }
+
+        const fields: Array<{ label: string, current: string, proposed: string }> = [
+            {
+                label: 'Descriptor format',
+                current: formatWorkchainDescriptionVersion(currentWorkchain.version),
+                proposed: formatWorkchainDescriptionVersion(proposedWorkchain.version)
+            },
+            {
+                label: 'Enabled since',
+                current: formatWorkchainEnabledSince(currentWorkchain.enabled_since),
+                proposed: formatWorkchainEnabledSince(proposedWorkchain.enabled_since)
+            },
+            {
+                label: 'Actual minimum split depth',
+                current: formatWorkchainSplitDepth(currentWorkchain.actual_min_split),
+                proposed: formatWorkchainSplitDepth(proposedWorkchain.actual_min_split)
+            },
+            {
+                label: 'Configured minimum split depth',
+                current: formatWorkchainSplitDepth(currentWorkchain.min_split),
+                proposed: formatWorkchainSplitDepth(proposedWorkchain.min_split)
+            },
+            {
+                label: 'Maximum shard split depth',
+                current: formatWorkchainSplitDepth(currentWorkchain.max_split),
+                proposed: formatWorkchainSplitDepth(proposedWorkchain.max_split)
+            },
+            {
+                label: 'Basic workchain',
+                current: formatEnabled(currentWorkchain.basic),
+                proposed: formatEnabled(proposedWorkchain.basic)
+            },
+            {
+                label: 'Active',
+                current: formatEnabled(currentWorkchain.active),
+                proposed: formatEnabled(proposedWorkchain.active)
+            },
+            {
+                label: 'Accepts messages',
+                current: formatEnabled(currentWorkchain.accept_msgs),
+                proposed: formatEnabled(proposedWorkchain.accept_msgs)
+            },
+            {
+                label: 'Flags',
+                current: formatCount(currentWorkchain.flags),
+                proposed: formatCount(proposedWorkchain.flags)
+            },
+            {
+                label: 'Zerostate root hash',
+                current: currentWorkchain.zerostate_root_hash,
+                proposed: proposedWorkchain.zerostate_root_hash
+            },
+            {
+                label: 'Zerostate file hash',
+                current: currentWorkchain.zerostate_file_hash,
+                proposed: proposedWorkchain.zerostate_file_hash
+            },
+            {
+                label: 'Workchain version',
+                current: formatCount(currentWorkchain.workchain_version),
+                proposed: formatCount(proposedWorkchain.workchain_version)
+            },
+            {
+                label: 'Workchain format',
+                current: describeWorkchainFormat(currentWorkchain.format),
+                proposed: describeWorkchainFormat(proposedWorkchain.format)
+            },
+            {
+                label: 'Split/merge timings',
+                current: describeWorkchainSplitMergeTimings(currentWorkchain.split_merge_timings),
+                proposed: describeWorkchainSplitMergeTimings(proposedWorkchain.split_merge_timings)
+            },
+            {
+                label: 'Persistent state split depth',
+                current: formatNullableWorkchainSplitDepth(currentWorkchain.persistent_state_split_depth),
+                proposed: formatNullableWorkchainSplitDepth(proposedWorkchain.persistent_state_split_depth)
+            }
+        ];
+
+        for (const field of fields) {
+            if (field.current !== field.proposed) {
+                rows.push({
+                    label: `${labelPrefix}: ${field.label}`,
+                    current: field.current,
+                    proposed: field.proposed
+                });
+            }
+        }
+    }
+
+    if (rows.length === 0) {
+        rows.push({
+            label: 'Decoded workchain config',
+            current: current ? formatPlural(current.size, 'workchain') : 'Param not set',
+            proposed: `No decoded field changes across ${formatPlural(proposed.size, 'workchain')}`
+        });
+    }
+
+    return rows;
+}
+
+function describeWorkchain(workchain: WorkchainDescription): string {
+    return [
+        formatWorkchainDescriptionVersion(workchain.version),
+        workchain.active ? 'active' : 'inactive',
+        workchain.accept_msgs ? 'accepting messages' : 'not accepting messages',
+        `split depth ${workchain.min_split}-${workchain.max_split}`,
+        describeWorkchainFormat(workchain.format)
+    ].join(', ');
+}
+
+function formatWorkchainDescriptionVersion(version: WorkchainDescription['version']): string {
+    return version === 'workchain_v2' ? 'Workchain v2 (#a7)' : 'Workchain v1 (#a6)';
+}
+
+function formatWorkchainEnabledSince(unixTime: number): string {
+    return unixTime === 0 ? 'Not enabled' : formatUnixUtc(unixTime);
+}
+
+function formatWorkchainSplitDepth(depth: number): string {
+    return `${formatCount(depth)} (up to ${formatCount(1n << BigInt(depth))} shards)`;
+}
+
+function formatNullableWorkchainSplitDepth(depth: number | null): string {
+    return depth === null ? 'Not set' : formatWorkchainSplitDepth(depth);
+}
+
+function formatEnabled(value: boolean): string {
+    return value ? 'Enabled' : 'Disabled';
+}
+
+function describeWorkchainFormat(format: WorkchainFormat): string {
+    if (format.kind === 'basic') {
+        return `Basic TVM, VM version ${format.vm_version}, mode ${formatCount(format.vm_mode)}`;
+    }
+
+    return `Extended, address ${format.min_addr_len}-${format.max_addr_len} bits in steps of ${format.addr_len_step}, type ${format.workchain_type_id}`;
+}
+
+function describeWorkchainSplitMergeTimings(timings: WorkchainSplitMergeTimings | null): string {
+    if (!timings) {
+        return 'Not set';
+    }
+
+    return [
+        `delay ${formatDuration(timings.split_merge_delay)}`,
+        `interval ${formatDuration(timings.split_merge_interval)}`,
+        `minimum interval ${formatDuration(timings.min_split_merge_interval)}`,
+        `maximum delay ${formatDuration(timings.max_split_merge_delay)}`
+    ].join(', ');
 }
 
 function buildConsensusChangeRows(current: ConsensusConfigAll | null, proposed: ConsensusConfigAll): ChangeRow[] {
