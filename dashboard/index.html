@@ -1286,6 +1286,181 @@
         font-family: Menlo, Monaco, Consolas, "Courier New", monospace;
       }
 
+      .proposal-tabs {
+        display: flex;
+        gap: 4px;
+        margin: 24px 24px 0;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .proposal-tab {
+        min-height: 42px;
+        padding: 8px 16px;
+        border: 2px solid transparent;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--muted);
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .proposal-tab:hover {
+        border-color: #b9def5;
+        background: #f4faff;
+        color: var(--accent);
+      }
+
+      .proposal-tab[aria-selected="true"] {
+        border-color: var(--accent);
+        background: #fff;
+        color: var(--accent);
+      }
+
+      .voter-panel {
+        margin: 20px 24px 24px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fff;
+      }
+
+      .voter-toolbar {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 18px;
+        background: var(--accent-soft);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .voter-search-label {
+        display: grid;
+        gap: 7px;
+        width: min(620px, 100%);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .voter-search {
+        width: 100%;
+        min-height: 42px;
+        padding: 9px 12px;
+        border: 1px solid #c9d8e2;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--ink);
+        font: inherit;
+      }
+
+      .voter-search:focus {
+        border-color: var(--accent);
+        outline: 3px solid rgba(0, 122, 204, 0.12);
+      }
+
+      .voter-match-count {
+        flex: 0 0 auto;
+        padding-bottom: 10px;
+        color: var(--accent);
+        font-weight: 700;
+      }
+
+      .voter-note,
+      .voter-empty,
+      .voter-no-results {
+        margin: 0;
+        padding: 14px 18px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .voter-note {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .voter-no-results {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .voter-table-wrap {
+        max-height: 560px;
+        overflow: auto;
+      }
+
+      .voter-table {
+        width: 100%;
+        min-width: 1040px;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      .voter-table th,
+      .voter-table td {
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .voter-table th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: #f7f9fa;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .voter-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .voter-table tr:hover td {
+        background: #f8fbfd;
+      }
+
+      .voter-id {
+        color: var(--ink);
+        white-space: nowrap;
+      }
+
+      .voter-copy {
+        max-width: 270px;
+      }
+
+      .voter-copy .mono {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .voter-role {
+        display: inline-flex;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .voter-weight {
+        white-space: nowrap;
+      }
+
+      .voter-weight small {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+      }
+
       @media (max-width: 900px) {
         .stats {
           grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1369,6 +1544,25 @@
         .change-grid {
           margin-left: 16px;
           margin-right: 16px;
+        }
+
+        .proposal-tabs {
+          margin-left: 16px;
+          margin-right: 16px;
+        }
+
+        .voter-panel {
+          margin-left: 16px;
+          margin-right: 16px;
+        }
+
+        .voter-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .voter-match-count {
+          padding-bottom: 0;
         }
 
         .change-grid {
@@ -1484,7 +1678,7 @@
       const refreshButton = document.getElementById('refresh-button');
       const tonviewerLink = document.getElementById('tonviewer-link');
       const MTONGA_PLAN_URL = 'https://t.me/durov/482';
-      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v8';
+      const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v9';
       const SNAPSHOT_MAX_AGE_MS = 60 * 1000;
 
       let refreshTimer = null;
@@ -1495,7 +1689,68 @@
       });
 
       proposalList.addEventListener('click', copyHashFromClick);
+      proposalList.addEventListener('click', switchProposalTabFromClick);
+      proposalList.addEventListener('input', filterVotersFromInput);
       resolvedList.addEventListener('click', copyHashFromClick);
+
+      function switchProposalTabFromClick(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        const button = target ? target.closest('[data-proposal-tab]') : null;
+        if (!button) {
+          return;
+        }
+
+        const proposal = button.closest('.proposal');
+        const panelId = button.dataset.tabTarget;
+        if (!proposal || !panelId) {
+          return;
+        }
+
+        proposal.querySelectorAll('[data-proposal-tab]').forEach((tab) => {
+          const selected = tab === button;
+          tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+          tab.tabIndex = selected ? 0 : -1;
+        });
+
+        proposal.querySelectorAll('[data-proposal-tab-panel]').forEach((panel) => {
+          panel.hidden = panel.id !== panelId;
+        });
+      }
+
+      function filterVotersFromInput(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        const input = target ? target.closest('[data-voter-search]') : null;
+        if (!input) {
+          return;
+        }
+
+        const panel = input.closest('[data-voter-panel]');
+        if (!panel) {
+          return;
+        }
+
+        const query = input.value.trim().toLowerCase().replace(/^0x/, '');
+        const rows = Array.from(panel.querySelectorAll('[data-voter-row]'));
+        let visible = 0;
+
+        rows.forEach((row) => {
+          const matches = !query || (row.dataset.search || '').includes(query);
+          row.hidden = !matches;
+          if (matches) {
+            visible += 1;
+          }
+        });
+
+        const count = panel.querySelector('[data-voter-match-count]');
+        if (count) {
+          count.textContent = query ? `${visible} of ${rows.length} voters` : `${rows.length} voters`;
+        }
+
+        const noResults = panel.querySelector('[data-voter-no-results]');
+        if (noResults) {
+          noResults.hidden = visible !== 0;
+        }
+      }
 
       async function copyHashFromClick(event) {
         const target = event.target instanceof Element ? event.target : null;
@@ -1761,6 +2016,7 @@
         const severityClass = proposal.critical ? 'critical' : 'good';
         const severityLabel = proposal.critical ? 'Critical' : 'Non-critical';
         const deadline = formatTime(proposal.expiresAt);
+        const proposalId = proposal.hash;
         const metrics = [
           metricCard('Voted validators', `${proposal.voterCount} / ${totalValidators}`),
           metricCard(
@@ -1787,7 +2043,9 @@
               `).join('')}
             </div>
           `
-          : '';
+          : '<p class="voter-empty">No structured parameter changes are available.</p>';
+
+        const voters = renderVotersPanel(proposal);
 
         return `
           <div class="proposal-head">
@@ -1821,7 +2079,43 @@
             <div class="metric-grid">${metrics}</div>
           </div>
 
-          ${changes}
+          <div class="proposal-tabs" role="tablist" aria-label="Proposal details">
+            <button
+              class="proposal-tab"
+              id="changes-tab-${proposalId}"
+              type="button"
+              role="tab"
+              aria-selected="true"
+              aria-controls="changes-${proposalId}"
+              data-proposal-tab
+              data-tab-target="changes-${proposalId}"
+            >Changes</button>
+            <button
+              class="proposal-tab"
+              id="voters-tab-${proposalId}"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="voters-${proposalId}"
+              tabindex="-1"
+              data-proposal-tab
+              data-tab-target="voters-${proposalId}"
+            >Voters (${proposal.voterCount})</button>
+          </div>
+
+          <section
+            id="changes-${proposalId}"
+            role="tabpanel"
+            aria-labelledby="changes-tab-${proposalId}"
+            data-proposal-tab-panel
+          >${changes}</section>
+          <section
+            id="voters-${proposalId}"
+            role="tabpanel"
+            aria-labelledby="voters-tab-${proposalId}"
+            data-proposal-tab-panel
+            hidden
+          >${voters}</section>
 
           <div class="meta">
             <span>
@@ -1834,6 +2128,100 @@
             <span>Expires ${deadline}</span>
           </div>
         `;
+      }
+
+      function renderVotersPanel(proposal) {
+        const voters = Array.isArray(proposal.voters) ? proposal.voters : [];
+        const identityNote = proposal.voterSetResolved
+          ? 'The config contract stores validator-set indexes, not owner wallets or operator names. Search by index, validator public key, or ADNL address.'
+          : 'The validator set referenced by this proposal is no longer present in config params 32, 34, or 36. Vote indexes are available, but public keys and ADNL addresses cannot be resolved.';
+        const rows = voters.map(renderVoterRow).join('');
+        const table = rows
+          ? `
+            <div class="voter-table-wrap">
+              <table class="voter-table">
+                <thead>
+                  <tr>
+                    <th>Index</th>
+                    <th>Validator public key</th>
+                    <th>ADNL address</th>
+                    <th>Role</th>
+                    <th>Voting weight</th>
+                  </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          `
+          : '<p class="voter-empty">No validators have voted in the current round yet.</p>';
+
+        return `
+          <div class="voter-panel" data-voter-panel>
+            <div class="voter-toolbar">
+              <label class="voter-search-label">
+                Find your validator
+                <input
+                  class="voter-search"
+                  type="search"
+                  placeholder="Index, public key, or ADNL address"
+                  autocomplete="off"
+                  data-voter-search
+                >
+              </label>
+              <span class="voter-match-count" data-voter-match-count>${voters.length} voters</span>
+            </div>
+            <p class="voter-note">${escapeHtml(identityNote)}</p>
+            <p class="voter-no-results" data-voter-no-results hidden>No voted validators match this identifier.</p>
+            ${table}
+          </div>
+        `;
+      }
+
+      function renderVoterRow(voter) {
+        const publicKey = voter.publicKey || '';
+        const adnlAddress = voter.adnlAddress || '';
+        const searchValue = `${voter.index} ${publicKey} ${adnlAddress}`.toLowerCase();
+        const publicKeyCell = publicKey
+          ? renderVoterIdentity(publicKey)
+          : '<span class="voter-id">Not available</span>';
+        const adnlCell = adnlAddress
+          ? renderVoterIdentity(adnlAddress)
+          : '<span class="voter-id">Not available</span>';
+        const role = voter.role === 'main'
+          ? 'Masterchain'
+          : voter.role === 'shard'
+            ? 'Shardchain'
+            : 'Unknown';
+        const weight = voter.weight
+          ? `${escapeHtml(voter.weightPercentOfSet || '0.0000')}%<small title="${escapeHtml(voter.weight)} raw weight">${escapeHtml(formatInteger(voter.weight))} raw</small>`
+          : 'Not available';
+
+        return `
+          <tr data-voter-row data-search="${escapeHtml(searchValue)}">
+            <td><strong>#${escapeHtml(voter.index)}</strong></td>
+            <td>${publicKeyCell}</td>
+            <td>${adnlCell}</td>
+            <td><span class="voter-role">${role}</span></td>
+            <td class="voter-weight">${weight}</td>
+          </tr>
+        `;
+      }
+
+      function renderVoterIdentity(value) {
+        return `
+          <button class="copy-hash voter-copy" type="button" data-copy-value="${escapeHtml(value)}" title="${escapeHtml(value)}">
+            <span class="mono">${escapeHtml(shortenMiddle(value, 12, 10))}</span>
+            <span class="copy-label">Copy</span>
+          </button>
+        `;
+      }
+
+      function formatInteger(value) {
+        try {
+          return new Intl.NumberFormat('en-US').format(BigInt(value));
+        } catch (error) {
+          return String(value);
+        }
       }
 
       function statCard(label, value) {

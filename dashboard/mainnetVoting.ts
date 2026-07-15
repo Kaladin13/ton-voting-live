@@ -252,7 +252,27 @@ type ResolvedProposal = {
 
 type VsetEntry = {
     idx: number,
+    publicKey: string,
+    adnlAddress: string | null,
     weight: bigint
+};
+
+type IndexedValidatorSet = {
+    utime_since: number,
+    utime_until: number,
+    total: number,
+    main: number,
+    total_weight: bigint,
+    list: VsetEntry[]
+};
+
+type ProposalVoter = {
+    index: number,
+    publicKey: string | null,
+    adnlAddress: string | null,
+    role: 'main' | 'shard' | null,
+    weight: string | null,
+    weightPercentOfSet: string | null
 };
 
 type ActiveProposal = {
@@ -263,7 +283,9 @@ type ActiveProposal = {
     critical: boolean,
     expiresAt: number,
     validatorSetMatchesCurrent: boolean,
+    voterSetResolved: boolean,
     voterCount: number,
+    voters: ProposalVoter[],
     neededValidatorCount: number | null,
     yesWeight: string,
     neededWeight: string,
@@ -545,6 +567,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const currentVsetCell = getRequiredParam(cfg, 34);
     const currentVsetHash = currentVsetCell.hash().toString('hex');
     const currentVset = parseVsetWithIndexes(currentVsetCell);
+    const validatorSetsByHash = collectIndexedValidatorSets(cfg);
     const thresholdWeight = (currentVset.total_weight * 3n) / 4n;
     const activeProposalHashes = new Set(proposals.map((proposal) => toHex(proposal.proposalHash)));
     const activeProposals = proposals.map((proposal) => {
@@ -554,6 +577,11 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
         const rule = proposal.critical ? voteSetup.critical : voteSetup.normal;
         const changeRows = buildConfigChangeRows(proposal.param_id, cfg.get(proposal.param_id), proposal.value);
         const validatorSetMatchesCurrent = toHex(proposal.vset_id) === currentVsetHash;
+        const proposalValidatorSet = validatorSetsByHash.get(toHex(proposal.vset_id)) ?? null;
+        const voters = buildProposalVoters(
+            proposal.voters,
+            proposalValidatorSet
+        );
 
         return {
             hash,
@@ -563,7 +591,9 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
             critical: proposal.critical,
             expiresAt: proposal.expires,
             validatorSetMatchesCurrent,
+            voterSetResolved: proposalValidatorSet !== null,
             voterCount: proposal.voters.length,
+            voters,
             neededValidatorCount: validatorSetMatchesCurrent
                 ? countValidatorsNeededForWeight(currentVset.list, proposal.voters, neededWeight)
                 : null,
@@ -851,6 +881,44 @@ function compareBigintDesc(left: bigint, right: bigint) {
         return 0;
     }
     return left > right ? -1 : 1;
+}
+
+function buildProposalVoters(voterIndexes: number[], validatorSet: IndexedValidatorSet | null): ProposalVoter[] {
+    const validatorsByIndex = new Map(
+        validatorSet?.list.map((validator) => [validator.idx, validator]) ?? []
+    );
+
+    return [...voterIndexes]
+        .sort((left, right) => left - right)
+        .map((index) => {
+            const validator = validatorsByIndex.get(index);
+
+            return {
+                index,
+                publicKey: validator?.publicKey ?? null,
+                adnlAddress: validator?.adnlAddress ?? null,
+                role: validator && validatorSet
+                    ? (index < validatorSet.main ? 'main' : 'shard')
+                    : null,
+                weight: validator?.weight.toString() ?? null,
+                weightPercentOfSet: validator && validatorSet
+                    ? formatPercent(validator.weight, validatorSet.total_weight, 4)
+                    : null
+            };
+        });
+}
+
+function collectIndexedValidatorSets(configDict: MapLikeConfig): Map<string, IndexedValidatorSet> {
+    const validatorSets = new Map<string, IndexedValidatorSet>();
+
+    for (const paramId of [32, 34, 36]) {
+        const cell = configDict.get(paramId);
+        if (cell) {
+            validatorSets.set(cell.hash().toString('hex'), parseVsetWithIndexes(cell));
+        }
+    }
+
+    return validatorSets;
 }
 
 function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {
@@ -1388,7 +1456,7 @@ function parseJettonBridgePrices(cell: Cell): JettonBridgePrices {
     };
 }
 
-function parseVsetWithIndexes(cell: Cell) {
+function parseVsetWithIndexes(cell: Cell): IndexedValidatorSet {
     const slice = cell.beginParse();
     const tag = slice.loadUint(8);
     if (tag !== 0x12) {
@@ -1403,7 +1471,14 @@ function parseVsetWithIndexes(cell: Cell) {
         total_weight: slice.loadUintBig(64),
         list: Array.from(
             slice.loadDict(Dictionary.Keys.Uint(16), ValidatorDescriptionValue),
-            ([idx, entry]) => ({ idx, weight: entry.weight })
+            ([idx, entry]) => ({
+                idx,
+                publicKey: entry.public_key.toString('hex'),
+                adnlAddress: entry.adnl !== undefined
+                    ? entry.adnl.toString(16).padStart(64, '0')
+                    : null,
+                weight: entry.weight
+            })
         ) as VsetEntry[]
     };
 }
