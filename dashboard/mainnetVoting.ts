@@ -33,10 +33,10 @@ type SimplexConsensusConfig = {
 type SimplexConsensusConfigV2 = {
     version: 'simplex_config_v2',
     flags: number,
-    enable_observers: boolean,
+    protocol_version: number,
     use_quic: boolean,
     slots_per_leader_window: number,
-    noncritical: Record<string, number>
+    noncritical: Record<number, number>
 };
 
 type ConsensusConfig = SimplexConsensusConfig | SimplexConsensusConfigV2;
@@ -340,22 +340,28 @@ type KnownConfigResolvedProposal = {
 
 const MAINNET_CONFIG_ADDRESS = Address.parse('Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn');
 const TONVIEWER_CONFIG_URL = 'https://tonviewer.com/config';
-const NONCRITICAL_PARAM_NAMES: Record<number, string> = {
-    0: 'target_rate_ms',
-    1: 'first_block_timeout_ms',
-    2: 'first_block_timeout_multiplier_x1000',
-    3: 'first_block_timeout_cap_ms',
-    4: 'candidate_resolve_timeout_ms',
-    5: 'candidate_resolve_timeout_multiplier_x1000',
-    6: 'candidate_resolve_timeout_cap_ms',
-    7: 'candidate_resolve_cooldown_ms',
-    8: 'standstill_timeout_ms',
-    9: 'standstill_max_egress_bytes_per_s',
-    10: 'max_leader_window_desync',
-    11: 'bad_signature_ban_duration_ms',
-    12: 'candidate_resolve_rate_limit',
-    13: 'min_block_interval_ms',
-    14: 'no_empty_blocks_on_error_timeout_ms'
+type SimplexNoncriticalParam = {
+    label: string,
+    kind: 'milliseconds' | 'float32' | 'bytes_per_second' | 'count',
+    defaultValue: number
+};
+
+const SIMPLEX_NONCRITICAL_PARAMS: Record<number, SimplexNoncriticalParam> = {
+    0: { label: 'Target block interval', kind: 'milliseconds', defaultValue: 2_400 },
+    1: { label: 'First block timeout', kind: 'milliseconds', defaultValue: 1_000 },
+    2: { label: 'First block timeout multiplier', kind: 'float32', defaultValue: 1.2 },
+    3: { label: 'First block timeout cap', kind: 'milliseconds', defaultValue: 100_000 },
+    4: { label: 'Candidate resolve timeout', kind: 'milliseconds', defaultValue: 1_000 },
+    5: { label: 'Candidate resolve timeout multiplier', kind: 'float32', defaultValue: 1.2 },
+    6: { label: 'Candidate resolve timeout cap', kind: 'milliseconds', defaultValue: 10_000 },
+    7: { label: 'Candidate resolve cooldown', kind: 'milliseconds', defaultValue: 10 },
+    8: { label: 'Standstill timeout', kind: 'milliseconds', defaultValue: 10_000 },
+    9: { label: 'Standstill max egress', kind: 'bytes_per_second', defaultValue: 6_553_600 },
+    10: { label: 'Max leader-window desync', kind: 'count', defaultValue: 250 },
+    11: { label: 'Bad-signature ban duration', kind: 'milliseconds', defaultValue: 5_000 },
+    12: { label: 'Candidate resolve rate limit', kind: 'count', defaultValue: 10 },
+    13: { label: 'Minimum block interval', kind: 'milliseconds', defaultValue: 0 },
+    14: { label: 'Empty-block fallback timeout', kind: 'milliseconds', defaultValue: 15_000 }
 };
 const PARAM_LABELS: Record<number, string> = {
     8: 'Network version',
@@ -389,6 +395,8 @@ const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
 const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
 const MTONGA_PROPOSAL_HASHES = [
+    '605a9cc212207d676413260df968a9af3d431ba592d76ba0445668cadd57b57c',
+    '31a196cd2a43438009e1856d8ede081f4923ee27856b6adbcae5f141cae8d218',
     LAST_KNOWN_PROPOSAL_HASH,
     'b9fc3e68609931713760d0596a3482d9a084c90062d697aee7b420fc1b32a6e5',
     '5ef02b3ad2eb630e050850e88b9eb025a683f73d1f154ecef0a9e8168606d92a',
@@ -418,12 +426,12 @@ const LAST_KNOWN_PROPOSAL = {
         shard: {
             version: 'simplex_config_v2' as const,
             flags: 0,
-            enable_observers: false,
+            protocol_version: 0,
             use_quic: false,
             slots_per_leader_window: 4,
             noncritical: {
-                target_rate_ms: 800,
-                first_block_timeout_ms: 1600
+                0: 800,
+                1: 1600
             }
         }
     },
@@ -433,25 +441,25 @@ const LAST_KNOWN_PROPOSAL = {
         mc: {
             version: 'simplex_config_v2' as const,
             flags: 0,
-            enable_observers: false,
+            protocol_version: 0,
             use_quic: true,
             slots_per_leader_window: 4,
             noncritical: {
-                target_rate_ms: 400,
-                first_block_timeout_ms: 700,
-                min_block_interval_ms: 300
+                0: 400,
+                1: 700,
+                13: 300
             }
         },
         shard: {
             version: 'simplex_config_v2' as const,
             flags: 0,
-            enable_observers: false,
+            protocol_version: 0,
             use_quic: true,
             slots_per_leader_window: 4,
             noncritical: {
-                target_rate_ms: 400,
-                first_block_timeout_ms: 700,
-                min_block_interval_ms: 300
+                0: 400,
+                1: 700,
+                13: 300
             }
         }
     }
@@ -921,7 +929,7 @@ function collectIndexedValidatorSets(configDict: MapLikeConfig): Map<string, Ind
     return validatorSets;
 }
 
-function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {
+export function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {
     try {
         switch (paramId) {
             case 8:
@@ -1517,21 +1525,21 @@ function parseNewConsensusConfig(slice: Slice): ConsensusConfig {
     if (tag !== 0x22) {
         throw new Error(`Unexpected new consensus tag: ${tag}`);
     }
-    const flags = slice.loadUint(6);
-    const enable_observers = slice.loadBit();
+    const flags = slice.loadUint(5);
+    const protocol_version = slice.loadUint(2);
     const use_quic = slice.loadBit();
     const slots_per_leader_window = slice.loadUint(32);
     const noncritical = Object.fromEntries(
         Array.from(
             slice.loadDict(Dictionary.Keys.Uint(8), Dictionary.Values.Uint(32)),
-            ([key, value]) => [NONCRITICAL_PARAM_NAMES[key] ?? `param_${key}`, Number(value)]
+            ([key, value]) => [key, Number(value)]
         )
     );
 
     return {
         version: 'simplex_config_v2',
         flags,
-        enable_observers,
+        protocol_version,
         use_quic,
         slots_per_leader_window,
         noncritical
@@ -1727,18 +1735,20 @@ function describeWorkchainSplitMergeTimings(timings: WorkchainSplitMergeTimings 
 }
 
 function buildConsensusChangeRows(current: ConsensusConfigAll | null, proposed: ConsensusConfigAll): ChangeRow[] {
-    return [
-        {
-            label: 'Masterchain',
-            current: describeConsensusSide(current?.mc ?? null),
-            proposed: describeConsensusSide(proposed.mc)
-        },
-        {
-            label: 'Shardchains',
-            current: describeConsensusSide(current?.shard ?? null),
-            proposed: describeConsensusSide(proposed.shard)
-        }
+    const rows = [
+        ...buildConsensusSideChangeRows('Masterchain', current?.mc ?? null, proposed.mc),
+        ...buildConsensusSideChangeRows('Shardchains', current?.shard ?? null, proposed.shard)
     ];
+
+    if (rows.length > 0) {
+        return rows;
+    }
+
+    return [{
+        label: 'Decoded consensus config',
+        current: 'No semantic field changes',
+        proposed: 'No semantic field changes'
+    }];
 }
 
 function buildVoteSetupChangeRows(current: VoteSetup | null, proposed: VoteSetup): ChangeRow[] {
@@ -1842,23 +1852,34 @@ function buildStakeLimitChangeRows(current: StakeLimitsPreview | null, proposed:
 }
 
 function buildGlobalVersionChangeRows(current: GlobalVersion | null, proposed: GlobalVersion): ChangeRow[] {
-    return [
-        {
+    const rows: ChangeRow[] = [];
+
+    if (!current || current.version !== proposed.version) {
+        rows.push({
             label: 'TVM/network version',
             current: current ? String(current.version) : 'Param not set',
             proposed: String(proposed.version)
-        },
-        {
+        });
+    }
+
+    if (!current || current.capabilities !== proposed.capabilities) {
+        rows.push({
             label: 'Capability mask',
             current: current ? describeCapabilityMask(current.capabilities) : 'Param not set',
             proposed: describeCapabilityMask(proposed.capabilities)
-        },
-        {
+        });
+        rows.push({
             label: 'Capability delta',
             current: current ? describeCapabilityDelta(current.capabilities, proposed.capabilities, false) : 'Param not set',
             proposed: describeCapabilityDelta(current?.capabilities ?? 0n, proposed.capabilities, true)
-        }
-    ];
+        });
+    }
+
+    return rows.length > 0 ? rows : [{
+        label: 'Decoded network version',
+        current: 'No semantic field changes',
+        proposed: 'No semantic field changes'
+    }];
 }
 
 function buildFundamentalSmcChangeRows(current: string[] | null, proposed: string[]): ChangeRow[] {
@@ -2298,43 +2319,186 @@ function buildFallbackChangeRows(current: Cell | null, proposed: Cell, note?: st
     return rows;
 }
 
-function describeConsensusSide(side: ConsensusConfig | null): string {
-    if (!side) {
-        return 'Not set';
+type ConsensusDisplayField = {
+    key: string,
+    label: string,
+    value: string
+};
+
+function buildConsensusSideChangeRows(
+    scope: 'Masterchain' | 'Shardchains',
+    current: ConsensusConfig | null,
+    proposed: ConsensusConfig | null
+): ChangeRow[] {
+    if (!current || !proposed) {
+        if (current === proposed) {
+            return [];
+        }
+
+        return [{
+            label: `${scope} · Consensus mode`,
+            current: describeConsensusMode(current),
+            proposed: describeConsensusMode(proposed)
+        }];
     }
 
-    const details = [
-        formatConfigVersion(side.version),
-        `QUIC ${side.use_quic ? 'on' : 'off'}`,
-        `${side.slots_per_leader_window} slots/window`
+    const currentFields = new Map(getConsensusDisplayFields(current).map((field) => [field.key, field]));
+    const proposedFields = new Map(getConsensusDisplayFields(proposed).map((field) => [field.key, field]));
+    const fieldKeys = Array.from(new Set([...currentFields.keys(), ...proposedFields.keys()]));
+
+    return fieldKeys.flatMap((key) => {
+        const currentField = currentFields.get(key);
+        const proposedField = proposedFields.get(key);
+        const currentValue = currentField?.value ?? describeMissingConsensusField(key);
+        const proposedValue = proposedField?.value ?? describeMissingConsensusField(key);
+
+        if (currentValue === proposedValue) {
+            return [];
+        }
+
+        return [{
+            label: `${scope} · ${currentField?.label ?? proposedField?.label ?? key}`,
+            current: currentValue,
+            proposed: proposedValue
+        }];
+    });
+}
+
+function getConsensusDisplayFields(config: ConsensusConfig): ConsensusDisplayField[] {
+    const fields: ConsensusDisplayField[] = [
+        {
+            key: 'format',
+            label: 'Config format',
+            value: config.version === 'simplex_config'
+                ? 'Simplex v1 (fixed layout)'
+                : 'Simplex v2 (extensible layout)'
+        },
+        {
+            key: 'reserved_flags',
+            label: 'Reserved flags',
+            value: describeReservedConsensusFlags(config.flags)
+        },
+        {
+            key: 'transport',
+            label: 'Transport',
+            value: config.use_quic ? 'QUIC' : 'RLDP2'
+        },
+        {
+            key: 'slots_per_leader_window',
+            label: 'Slots per leader window',
+            value: formatPlural(config.slots_per_leader_window, 'slot')
+        }
     ];
 
-    if (side.flags !== 0) {
-        details.push(`flags ${side.flags}`);
-    }
-
-    if (side.version === 'simplex_config') {
-        details.push(
-            `${side.target_rate_ms} ms target`,
-            `${side.first_block_timeout_ms} ms first timeout`,
-            `${side.max_leader_window_desync} max leader desync`
+    if (config.version === 'simplex_config') {
+        fields.push(
+            {
+                key: 'target_rate',
+                label: 'Target block interval',
+                value: formatMilliseconds(config.target_rate_ms)
+            },
+            {
+                key: 'first_block_timeout',
+                label: 'First block timeout',
+                value: formatMilliseconds(config.first_block_timeout_ms)
+            },
+            {
+                key: 'max_leader_window_desync',
+                label: 'Max leader-window desync',
+                value: formatCount(config.max_leader_window_desync)
+            }
         );
-        return details.join(', ');
+        return fields;
     }
 
-    details.push(`observers ${side.enable_observers ? 'on' : 'off'}`);
+    fields.splice(1, 0, {
+        key: 'protocol_version',
+        label: 'Protocol version',
+        value: describeSimplexProtocolVersion(config.protocol_version)
+    });
 
-    if (typeof side.noncritical.target_rate_ms === 'number') {
-        details.push(`${side.noncritical.target_rate_ms} ms target`);
-    }
-    if (typeof side.noncritical.first_block_timeout_ms === 'number') {
-        details.push(`${side.noncritical.first_block_timeout_ms} ms first timeout`);
-    }
-    if (typeof side.noncritical.min_block_interval_ms === 'number') {
-        details.push(`${side.noncritical.min_block_interval_ms} ms min interval`);
+    for (const [idText, rawValue] of Object.entries(config.noncritical).sort(([left], [right]) => Number(left) - Number(right))) {
+        const id = Number(idText);
+        fields.push({
+            key: `noncritical:${id}`,
+            label: SIMPLEX_NONCRITICAL_PARAMS[id]?.label ?? `Noncritical param ${id}`,
+            value: describeSimplexNoncriticalValue(id, rawValue, true)
+        });
     }
 
-    return details.join(', ');
+    return fields;
+}
+
+function describeConsensusMode(config: ConsensusConfig | null): string {
+    if (!config) {
+        return 'Legacy Catchain path (Simplex config absent)';
+    }
+
+    return config.version === 'simplex_config'
+        ? 'Simplex enabled (fixed-layout v1 config)'
+        : 'Simplex enabled (extensible v2 config)';
+}
+
+function describeMissingConsensusField(key: string): string {
+    if (key.startsWith('noncritical:')) {
+        return describeSimplexNoncriticalValue(Number(key.slice('noncritical:'.length)), undefined, false);
+    }
+
+    return 'Not part of this config format';
+}
+
+function describeReservedConsensusFlags(flags: number): string {
+    return flags === 0
+        ? '0 (none)'
+        : `${flags} (${formatHex(BigInt(flags))}; meaning not defined by the current node)`;
+}
+
+function describeSimplexProtocolVersion(version: number): string {
+    if (version === 0) {
+        return '0 — baseline Simplex protocol';
+    }
+    if (version === 1) {
+        return '1 — dedicated block-sync overlay';
+    }
+
+    return `${version} — new DB identity, private-overlay observers, and Plumtree block broadcast`;
+}
+
+function describeSimplexNoncriticalValue(id: number, rawValue: number | undefined, explicit: boolean): string {
+    const metadata = SIMPLEX_NONCRITICAL_PARAMS[id];
+    if (!metadata) {
+        return rawValue === undefined ? 'Not set; node default' : `${formatCount(rawValue)} (raw uint32)`;
+    }
+
+    const value = rawValue === undefined ? metadata.defaultValue : rawValue;
+    let formatted: string;
+
+    switch (metadata.kind) {
+        case 'milliseconds':
+            formatted = formatMilliseconds(value);
+            break;
+        case 'float32':
+            formatted = formatFloat32(rawValue === undefined ? value : reinterpretUint32AsFloat32(value));
+            break;
+        case 'bytes_per_second':
+            formatted = `${formatBytes(value)}/s`;
+            break;
+        case 'count':
+            formatted = formatCount(value);
+            break;
+    }
+
+    return `${formatted} (${explicit ? 'explicit override' : 'node default'})`;
+}
+
+function reinterpretUint32AsFloat32(value: number): number {
+    const view = new DataView(new ArrayBuffer(4));
+    view.setUint32(0, value);
+    return view.getFloat32(0);
+}
+
+function formatFloat32(value: number): string {
+    return Number.isFinite(value) ? String(Number(value.toPrecision(7))) : String(value);
 }
 
 function describeProposalSetup(setup: ProposalSetup): string {
