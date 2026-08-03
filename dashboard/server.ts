@@ -12,7 +12,10 @@ const CONTENT_TYPES: Record<string, string> = {
     '.html': 'text/html; charset=utf-8',
     '.js': 'application/javascript; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json; charset=utf-8'
+    '.json': 'application/json; charset=utf-8',
+    '.png': 'image/png',
+    '.txt': 'text/plain; charset=utf-8',
+    '.xml': 'application/xml; charset=utf-8'
 };
 
 type CachedSnapshot = {
@@ -80,6 +83,7 @@ const server = createServer(async (req, res) => {
             res.writeHead(200, {
                 'Content-Type': CONTENT_TYPES['.json'],
                 'Cache-Control': `public, max-age=${CLIENT_CACHE_TTL_S}, stale-while-revalidate=${Math.max(CLIENT_CACHE_TTL_S, Math.ceil(SNAPSHOT_CACHE_TTL_MS / 1000))}`,
+                'X-Robots-Tag': 'noindex, nofollow',
                 'X-Cache': cacheStatus,
                 'X-Cache-Refreshed-At': String(snapshot.refreshedAt)
             });
@@ -90,7 +94,8 @@ const server = createServer(async (req, res) => {
         if (pathname === '/healthz') {
             res.writeHead(200, {
                 'Content-Type': 'text/plain; charset=utf-8',
-                'Cache-Control': 'no-store'
+                'Cache-Control': 'no-store',
+                'X-Robots-Tag': 'noindex, nofollow'
             });
             res.end('ok');
             return;
@@ -98,9 +103,21 @@ const server = createServer(async (req, res) => {
 
         const filePath = pathname === '/' ? INDEX_HTML : join(__dirname, pathname);
         const content = await readFile(filePath);
+        const extension = extname(filePath);
+        const isIndex = pathname === '/';
+        const isSeoFile = pathname === '/robots.txt' || pathname === '/sitemap.xml';
+        const isImageAsset = extension === '.png';
         res.writeHead(200, {
-            'Content-Type': CONTENT_TYPES[extname(filePath)] ?? 'application/octet-stream',
-            'Cache-Control': 'no-store'
+            'Content-Type': CONTENT_TYPES[extension] ?? 'application/octet-stream',
+            'Cache-Control': isImageAsset
+                ? 'public, max-age=86400'
+                : isSeoFile
+                    ? 'public, max-age=3600'
+                    : 'no-cache',
+            ...(isIndex ? {
+                'Content-Language': 'en',
+                'X-Robots-Tag': 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
+            } : {})
         });
         res.end(content);
     } catch (error) {
@@ -109,6 +126,7 @@ const server = createServer(async (req, res) => {
                 res.writeHead(200, {
                     'Content-Type': CONTENT_TYPES['.json'],
                     'Cache-Control': `public, max-age=${CLIENT_CACHE_TTL_S}, stale-while-revalidate=${Math.max(CLIENT_CACHE_TTL_S, Math.ceil(SNAPSHOT_CACHE_TTL_MS / 1000))}`,
+                    'X-Robots-Tag': 'noindex, nofollow',
                     'X-Cache': 'stale-if-error',
                     'X-Cache-Refreshed-At': String(cachedSnapshot.refreshedAt)
                 });
@@ -121,7 +139,8 @@ const server = createServer(async (req, res) => {
             });
             res.writeHead(502, {
                 'Content-Type': CONTENT_TYPES['.json'],
-                'Cache-Control': 'no-store'
+                'Cache-Control': 'no-store',
+                'X-Robots-Tag': 'noindex, nofollow'
             });
             res.end(body);
             return;
@@ -129,7 +148,8 @@ const server = createServer(async (req, res) => {
 
         res.writeHead(404, {
             'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'no-store'
+            'Cache-Control': 'no-store',
+            'X-Robots-Tag': 'noindex, nofollow'
         });
         res.end('Not found');
     }
