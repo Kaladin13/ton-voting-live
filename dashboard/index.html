@@ -1697,7 +1697,7 @@
         <div class="meta" id="hero-meta"></div>
         <div class="actions">
           <button class="button-primary" id="refresh-button" type="button">Refresh now</button>
-          <a class="button-link" id="tonviewer-link" href="https://tonviewer.com/config" target="_blank" rel="noreferrer">Open tonviewer/config</a>
+          <a class="button-link" id="actonscan-link" href="https://actonscan.com/config" target="_blank" rel="noreferrer">Open Actonscan config</a>
         </div>
       </section>
 
@@ -1735,7 +1735,7 @@
       const statusNode = document.getElementById('status');
       const footerNote = document.getElementById('footer-note');
       const refreshButton = document.getElementById('refresh-button');
-      const tonviewerLink = document.getElementById('tonviewer-link');
+      const actonscanLink = document.getElementById('actonscan-link');
       const MTONGA_PLAN_URL = 'https://t.me/durov/482';
       const SNAPSHOT_STORAGE_KEY = 'ton-config-voting:last-snapshot:v9';
       const SNAPSHOT_MAX_AGE_MS = 60 * 1000;
@@ -1950,7 +1950,7 @@
         setStatus('', '');
         proposalList.innerHTML = '';
         resolvedList.innerHTML = '';
-        tonviewerLink.href = snapshot.configContract.tonviewerUrl;
+        actonscanLink.href = snapshot.configContract.actonscanConfigUrl;
         const resolvedProposals = getResolvedProposals(snapshot);
         proposalCounter.textContent = `${snapshot.proposalCount} live ${snapshot.proposalCount === 1 ? 'proposal' : 'proposals'}`;
         resolvedCounter.textContent = `${resolvedProposals.length} remembered ${resolvedProposals.length === 1 ? 'outcome' : 'outcomes'}`;
@@ -1969,7 +1969,7 @@
         const shortConfigAddress = shortenMiddle(configAddress, 10, 8);
 
         heroMeta.innerHTML = [
-          `<span>Config contract <a class="meta-link mono" href="${snapshot.configContract.tonviewerUrl}" target="_blank" rel="noreferrer" title="${escapeHtml(configAddress)}">${escapeHtml(shortConfigAddress)}</a></span>`,
+          `<span>Config contract <a class="meta-link mono" href="${snapshot.configContract.actonscanUrl}" target="_blank" rel="noreferrer" title="${escapeHtml(configAddress)}">${escapeHtml(shortConfigAddress)}</a></span>`,
           `<span>Validator round ends ${roundEnds}</span>`,
           `<span>Last pulled ${fetchedAt}</span>`,
         ].join('');

@@ -314,7 +314,8 @@ export type VotingSnapshot = {
     configContract: {
         raw: string,
         friendly: string,
-        tonviewerUrl: string
+        actonscanUrl: string,
+        actonscanConfigUrl: string
     },
     validatorRound: {
         currentSetStartsAt: number,
@@ -345,7 +346,8 @@ type KnownConfigResolvedProposal = {
 };
 
 const MAINNET_CONFIG_ADDRESS = Address.parse('Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn');
-const TONVIEWER_CONFIG_URL = 'https://tonviewer.com/config';
+const ACTONSCAN_URL = 'https://actonscan.com';
+const ACTONSCAN_CONFIG_URL = `${ACTONSCAN_URL}/config`;
 type SimplexNoncriticalParam = {
     label: string,
     kind: 'milliseconds' | 'float32' | 'bytes_per_second' | 'count',
@@ -649,7 +651,8 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
         configContract: {
             raw: MAINNET_CONFIG_ADDRESS.toRawString(),
             friendly: MAINNET_CONFIG_ADDRESS.toString(),
-            tonviewerUrl: TONVIEWER_CONFIG_URL
+            actonscanUrl: `${ACTONSCAN_URL}/address/${MAINNET_CONFIG_ADDRESS.toString()}`,
+            actonscanConfigUrl: ACTONSCAN_CONFIG_URL
         },
         validatorRound: {
             currentSetStartsAt: currentVset.utime_since,
