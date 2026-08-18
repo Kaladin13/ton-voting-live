@@ -164,6 +164,12 @@ type SizeLimitsConfig = {
     max_transaction_library_loads: number | null
 };
 
+type ValidatorRegistryConfig = {
+    contract_address: bigint,
+    max_collators_per_validator: number,
+    new_code_hash: bigint | null
+};
+
 type OracleBridgeParams = {
     bridge_address: bigint,
     oracle_multisig_address: bigint,
@@ -381,6 +387,7 @@ const PARAM_LABELS: Record<number, string> = {
     31: 'Fundamental smart contracts',
     34: 'Current validator set',
     43: 'Account and message limits',
+    46: 'Validator registry',
     71: 'ETH-TON outbound bridge',
     72: 'BSC-TON outbound bridge',
     73: 'Polygon-TON outbound bridge',
@@ -395,6 +402,9 @@ const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
 const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
 const MTONGA_PROPOSAL_HASHES = [
+    '1abefa459593ee1eb5dffc43d2d671dfbc27b451fafc19651bde057e2a0f52bc',
+    '4ba153570713eaa0c34d8ea60efd656bfba7008617bf42d7c3cf758bc975fb10',
+    '678358ddbb13b1f32b1486543fb64a0dab2d7deb0f63e2477fc7499edb3b980a',
     '605a9cc212207d676413260df968a9af3d431ba592d76ba0445668cadd57b57c',
     '31a196cd2a43438009e1856d8ede081f4923ee27856b6adbcae5f141cae8d218',
     LAST_KNOWN_PROPOSAL_HASH,
@@ -838,7 +848,7 @@ function cellFromBase64(boc: string): Cell {
     return Cell.fromBoc(Buffer.from(boc, 'base64'))[0];
 }
 
-function getProposalSource(hash: string): ProposalSource {
+export function getProposalSource(hash: string): ProposalSource {
     if (MTONGA_PROPOSAL_HASH_SET.has(hash)) {
         return {
             kind: 'mtonga',
@@ -962,6 +972,8 @@ export function buildConfigChangeRows(paramId: number, current: Cell | undefined
                 return buildFundamentalSmcChangeRows(current ? parseFundamentalSmcAddresses(current) : null, parseFundamentalSmcAddresses(proposed));
             case 43:
                 return buildSizeLimitsChangeRows(current ? parseSizeLimitsConfig(current) : null, parseSizeLimitsConfig(proposed));
+            case 46:
+                return buildValidatorRegistryChangeRows(current ? parseValidatorRegistryConfig(current) : null, parseValidatorRegistryConfig(proposed));
             case 71:
             case 72:
             case 73:
@@ -1396,6 +1408,24 @@ function parseSizeLimitsConfig(cell: Cell): SizeLimitsConfig {
     }
 
     throw new Error(`Unexpected size limits config tag: ${tag}`);
+}
+
+function parseValidatorRegistryConfig(cell: Cell): ValidatorRegistryConfig {
+    const slice = cell.beginParse();
+    const tag = slice.loadUint(32);
+    if (tag !== 0x3601163e) {
+        throw new Error(`Unexpected validator registry config tag: ${tag.toString(16)}`);
+    }
+
+    const contract_address = slice.loadUintBig(256);
+    const max_collators_per_validator = slice.loadUint(32);
+    const hasNewCodeHash = slice.loadBit();
+
+    return {
+        contract_address,
+        max_collators_per_validator,
+        new_code_hash: hasNewCodeHash ? slice.loadUintBig(256) : null
+    };
 }
 
 function parseOracleBridgeParams(cell: Cell): OracleBridgeParams {
@@ -1891,8 +1921,8 @@ function buildFundamentalSmcChangeRows(current: string[] | null, proposed: strin
     return [
         {
             label: 'Fundamental address count',
-            current: current ? formatPlural(current.length, 'address') : 'Param not set',
-            proposed: formatPlural(proposed.length, 'address')
+            current: current ? formatPlural(current.length, 'address', 'addresses') : 'Param not set',
+            proposed: formatPlural(proposed.length, 'address', 'addresses')
         },
         {
             label: 'Added addresses',
@@ -2066,6 +2096,29 @@ function buildSizeLimitsChangeRows(current: SizeLimitsConfig | null, proposed: S
             label: 'Max transaction library loads',
             current: current ? formatNullableCount(current.max_transaction_library_loads, 'Not set') : 'Param not set (defaults)',
             proposed: formatNullableCount(proposed.max_transaction_library_loads, 'Not set')
+        }
+    ];
+}
+
+function buildValidatorRegistryChangeRows(
+    current: ValidatorRegistryConfig | null,
+    proposed: ValidatorRegistryConfig
+): ChangeRow[] {
+    return [
+        {
+            label: 'Registry contract',
+            current: current ? formatMasterchainAddress(current.contract_address) : 'Param not set',
+            proposed: formatMasterchainAddress(proposed.contract_address)
+        },
+        {
+            label: 'Max collators per validator',
+            current: current ? formatCount(current.max_collators_per_validator) : 'Param not set',
+            proposed: formatCount(proposed.max_collators_per_validator)
+        },
+        {
+            label: 'Registry code upgrade',
+            current: current ? formatOptionalCodeHash(current.new_code_hash) : 'Param not set',
+            proposed: formatOptionalCodeHash(proposed.new_code_hash)
         }
     ];
 }
@@ -2644,6 +2697,10 @@ function formatBits256(value: bigint) {
     return value.toString(16).padStart(64, '0').toUpperCase();
 }
 
+function formatOptionalCodeHash(value: bigint | null) {
+    return value === null ? 'Not scheduled' : `0x${formatBits256(value)}`;
+}
+
 function formatHex(value: bigint) {
     return `0x${value.toString(16)}`;
 }
@@ -2689,8 +2746,8 @@ function formatCount(value: bigint | number) {
     return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
-function formatPlural(count: number, singular: string) {
-    return `${count} ${count === 1 ? singular : `${singular}s`}`;
+function formatPlural(count: number, singular: string, plural = `${singular}s`) {
+    return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function formatUnixUtc(unixTime: number) {
