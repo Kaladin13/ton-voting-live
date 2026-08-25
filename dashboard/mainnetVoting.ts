@@ -580,7 +580,9 @@ const RECENT_ACCEPTED_CONFIG_PROPOSALS: KnownConfigResolvedProposal[] = [
 
 export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     const cfg = await config.getConfig();
-    const proposals = await fetchActiveConfigProposals();
+    const proposals = (await fetchActiveConfigProposals()).filter((proposal) => (
+        isChangeConf31(toHex(proposal.proposalHash), proposal.param_id)
+    ));
     const voteSetup = parseVoteSetup(getRequiredParam(cfg, 11));
     const elections = getElectionsConf(cfg);
     const validatorLimits = getValidatorsConf(cfg);
@@ -863,6 +865,10 @@ export function getProposalSource(hash: string): ProposalSource {
         kind: 'independent',
         label: 'Independent community proposal'
     };
+}
+
+export function isChangeConf31(hash: string, paramId: number): boolean {
+    return paramId !== 31 || MTONGA_PROPOSAL_HASH_SET.has(hash);
 }
 
 function compareProposalPriority(left: ActiveProposal, right: ActiveProposal) {
