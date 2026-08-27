@@ -122,7 +122,7 @@ describe('voting dashboard config diffs', () => {
           codeHash: '6f177fd863213d7bd3b24a694b0b7efb7425721ed1d21490d052ae93276c4406',
           source: {
             label: 'View WalletTg source on GitHub',
-            url: 'https://github.com/tolk-vm/tg-wallet-v6/blob/76d7ee5b6882354ffe3a5785eabdc47b76859ce2/contracts/WalletTg/WalletTg.tolk'
+            url: 'https://github.com/ton-blockchain/tg-wallet-contract/blob/master/contracts/WalletTg/WalletTg.tolk'
           }
         }
       }

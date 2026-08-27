@@ -414,6 +414,9 @@ const PARAM_LABELS: Record<number, string> = {
     81: 'BNB-TON inbound bridge',
     82: 'Polygon-TON inbound bridge'
 };
+const PARAM_DESCRIPTIONS: Record<number, string> = {
+    [-123]: 'Adding the tg-wallet-v1 contract code to the network configuration file. The contract is proposed for use in the native Gram Wallet on Telegram'
+};
 
 const tonApi = new TonApiClient({ baseUrl: 'https://tonapi.io' });
 const adapter = new ContractAdapter(tonApi);
@@ -650,7 +653,7 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
             wins: proposal.wins,
             losses: proposal.losses,
             rule,
-            summary: buildSummary({
+            summary: PARAM_DESCRIPTIONS[proposal.param_id] ?? buildSummary({
                 critical: proposal.critical,
                 paramLabel: PARAM_LABELS[proposal.param_id] ?? `config param ${proposal.param_id}`,
                 voterCount: proposal.voters.length,
