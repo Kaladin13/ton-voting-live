@@ -234,10 +234,24 @@ type WorkchainDescription = {
     persistent_state_split_depth: number | null
 };
 
+type ContractCodeChangeValue = {
+    kind: 'contract-code',
+    stage: 'Param before' | 'Param after',
+    title: string,
+    detail: string,
+    codeHash?: string,
+    source?: {
+        label: string,
+        url: string
+    }
+};
+
+type ChangeValue = string | ContractCodeChangeValue;
+
 type ChangeRow = {
     label: string,
-    current: string,
-    proposed: string
+    current: ChangeValue,
+    proposed: ChangeValue
 };
 
 type ProposalSource = {
@@ -348,6 +362,8 @@ type KnownConfigResolvedProposal = {
 const MAINNET_CONFIG_ADDRESS = Address.parse('Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn');
 const ACTONSCAN_URL = 'https://actonscan.com';
 const ACTONSCAN_CONFIG_URL = `${ACTONSCAN_URL}/config`;
+const TELEGRAM_WALLET_REV00_CODE_HASH = '6f177fd863213d7bd3b24a694b0b7efb7425721ed1d21490d052ae93276c4406';
+const TELEGRAM_WALLET_REV00_SOURCE_URL = 'https://github.com/ton-blockchain/tg-wallet-contract/blob/master/contracts/WalletTg/WalletTg.tolk';
 type SimplexNoncriticalParam = {
     label: string,
     kind: 'milliseconds' | 'float32' | 'bytes_per_second' | 'count',
@@ -372,6 +388,7 @@ const SIMPLEX_NONCRITICAL_PARAMS: Record<number, SimplexNoncriticalParam> = {
     14: { label: 'Empty-block fallback timeout', kind: 'milliseconds', defaultValue: 15_000 }
 };
 const PARAM_LABELS: Record<number, string> = {
+    [-123]: 'Add Telegram Wallet contract to Config',
     8: 'Network version',
     11: 'Voting rules',
     12: 'Workchain config',
@@ -404,6 +421,8 @@ const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
 const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
 const MTONGA_PROPOSAL_HASHES = [
+    'cea2327f6b84fca2afb616ed45c042350b80106ece94e5530dac72cbb03b1b98',
+    'e5e148027499276e65c48749129ca014bb4e53279b1ac6314d124f4e30166076',
     '1abefa459593ee1eb5dffc43d2d671dfbc27b451fafc19651bde057e2a0f52bc',
     '4ba153570713eaa0c34d8ea60efd656bfba7008617bf42d7c3cf758bc975fb10',
     '678358ddbb13b1f32b1486543fb64a0dab2d7deb0f63e2477fc7499edb3b980a',
@@ -951,6 +970,8 @@ function collectIndexedValidatorSets(configDict: MapLikeConfig): Map<string, Ind
 export function buildConfigChangeRows(paramId: number, current: Cell | undefined, proposed: Cell): ChangeRow[] {
     try {
         switch (paramId) {
+            case -123:
+                return buildTelegramWalletContractChangeRows(current ?? null, proposed);
             case 8:
                 return buildGlobalVersionChangeRows(current ? parseGlobalVersion(current) : null, parseGlobalVersion(proposed));
             case 11:
@@ -998,6 +1019,44 @@ export function buildConfigChangeRows(paramId: number, current: Cell | undefined
         const reason = error instanceof Error ? error.message : 'Unknown decode error';
         return buildFallbackChangeRows(current ?? null, proposed, `Structured preview unavailable: ${reason}`);
     }
+}
+
+function buildTelegramWalletContractChangeRows(current: Cell | null, proposed: Cell): ChangeRow[] {
+    const proposedHash = proposed.hash().toString('hex');
+    const source = proposedHash === TELEGRAM_WALLET_REV00_CODE_HASH
+        ? {
+            label: 'View WalletTg source on GitHub',
+            url: TELEGRAM_WALLET_REV00_SOURCE_URL
+        }
+        : undefined;
+
+    return [
+        {
+            label: 'Shared contract bytecode',
+            current: current
+                ? {
+                    kind: 'contract-code',
+                    stage: 'Param before',
+                    title: 'Existing WalletTg bytecode',
+                    detail: 'The contract code currently stored in config[-123].',
+                    codeHash: current.hash().toString('hex')
+                }
+                : {
+                    kind: 'contract-code',
+                    stage: 'Param before',
+                    title: 'Param not set',
+                    detail: 'No contract bytecode is currently stored in config[-123].'
+                },
+            proposed: {
+                kind: 'contract-code',
+                stage: 'Param after',
+                title: 'Telegram Wallet · WalletTg',
+                detail: 'Shared contract bytecode loaded by Telegram Wallet contracts from config[-123].',
+                codeHash: proposedHash,
+                source
+            }
+        }
+    ];
 }
 
 function getRequiredParam(configDict: MapLikeConfig, id: number): Cell {

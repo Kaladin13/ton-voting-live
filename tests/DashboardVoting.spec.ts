@@ -45,6 +45,7 @@ describe('voting dashboard config diffs', () => {
   const currentParam31 = cellFromBase64('te6cckECEAEAASAAAQHAAQIBIAIHAgEgAwYCASAEBQAD37AAQb9mZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZwBCv41cAhCzXa3aohn6xFnboP3vsfrk6XoNB5dzn+BQ1pTKAgEgCAsCAVgJCgBBvyM5sNqqLpTaypagzCYpsGPmuNSPctEPwrDhxfa3YxBGAEG/HTdlZP5vY6qLFFCESWKDqOMcSUuv4djYlFLx3QsjfrYCASAMDwIBIA0OAEG/FD4kDZsgfXEaQxoPYlMKUCnZ//0famrsKSjwSXUmWv4AQb80kxKHyuI+LcFNRO1zGxaMbxEsqcty02MAzivDw037FgBBv1WvtHE3vGL4v2ULAPnKD3VaY4a/yqaWeIMPC9ID7JjRtEus9Q==');
   const proposedParam31 = cellFromBase64('te6cckECEgEAAUgAAQHAAQIBIAIHAgEgAwYCASAEBQAD37AAQb9mZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZwBCv41cAhCzXa3aohn6xFnboP3vsfrk6XoNB5dzn+BQ1pTKAgEgCA0CASAJCgBBv2RpATa2BDDdBnoQVxR7dwRLZGF06VOA3eSZ5mmPQDRpAgEgCwwAQb8jObDaqi6U2sqWoMwmKbBj5rjUj3LRD8Kw4cX2t2MQRgBBvx03ZWT+b2OqixRQhElig6jjHElLr+HY2JRS8d0LI362AgEgDhECASAPEABBvxQ+JA2bIH1xGkMaD2JTClAp2f/9H2pq7Cko8El1Jlr+AEG/NJMSh8riPi3BTUTtcxsWjG8RLKnLctNjAM4rw8NN+xYAQb9Vr7RxN7xi+L9lCwD5yg91WmOGv8qmlniDDwvSA+yY0Zprwv0=');
   const proposedParam46 = cellFromBase64('te6cckEBAQEAKwAAUTYBFj6SNICbWwIYboM9CCuKPbuCJbIwunSpwG7yTPM0x6AaNAAAAARAqAj+qQ==');
+  const proposedParamMinus123 = cellFromBase64('te6cckECFAEAAxUAART/APSkE/S88sgLAQIBIAIQAgFIAwkCAs8ECAP3IMI1xjtRNDXCweS8AHe7UTQ1ywIBPK/0x/TH9cL/yPIzvkWVBBV+RCSXwThAtcsIxxLc6SOMNMf0x/TH9MH10xRJbry4IVRNbry4IYB+CO88uCIAqTIz4QCyx8Tyx8Ty//J7VT7AODXLCOcS3Ok4wLXLCfd1M484wKED4AUGBwCg0x/TH9MfURS68uCFUSS68uCG+CO88uCIAaTIz4QCyx8Syx8Sy//J7VRwAdMH9AWOFdD0BCDXSlFEoASW0wfUAvsA5NEgbuYwIfLgk7ry4JMAuNMf0x/TH9P/10xRJbry4IVRNbry4IYB+CO88uCIUUG98uCU+Cj6RMiLxLRVlfUk9UQVRJT06M8WEsoHy//5FgTQgwjXGNFUFAT5EPLglaTIz4QCyx/LH8v/ye1UAATy8AABIAIBIAoPAgEgCw4CAW4MDQA9rc52omhrhYPJeADvdqJoa5YEAnlf6Y+Y6Y+Y64X/wAA3rx32omhrhYPJeADvdqJoa5YEAnlf6Y+Y64WPwAAxuMl+1E0NcLB5LwAd7tRNDXLAgE8r/XCx+AARvjcvaiaGuFg8AvjygwjXGO1E0NcLB5LwAd7tRNDXLAgE8r/TH9Mf1wv/I8jO+RZUEFX5EJPywIfhAtcsIxxLc6yOOtMf0x/TH9MH10xRJbry4IVRNbry4IYB+CO88uCI+AACpMjPhALLHxPLHxPL/8ntVPgPIHKw8uCJ+wDg1ywjnEtzrOMCERIAtNMf0x/TH1EUuvLghVEkuvLghvgjvPLgiPgAAaTIz4QCyx8Syx8Sy//J7VT4D3AB0wf0BY4b0PQEINdKUUSgBJzTB9QicrDy4IkC+wDk0SBu5jAh8uCTuvLgkwHQidcnjl7TH9Mf0x/T/9dMUSW68uCFUTW68uCGAfgjvPLgiFFBvfLglPgo+kTIi8S0VZX1JPVEFUSU9OjPFhLKB8v/+RYE0IMI1xjRVBQE+RDy4JX4AKTIz4QCyx/LH8v/ye1U4IQP8vATAAj7upnIsNvU9A==');
 
   it('decodes the current param 30 proposal as protocol upgrades, not flags', () => {
     const rows = buildConfigChangeRows(30, buildParam30(0, 1), buildParam30(2, 2));
@@ -87,6 +88,45 @@ describe('voting dashboard config diffs', () => {
       kind: 'mtonga',
       label: 'MTONGA plan'
     })));
+  });
+
+  it('recognizes the latest config proposals as MTONGA proposals', () => {
+    const hashes = [
+      'cea2327f6b84fca2afb616ed45c042350b80106ece94e5530dac72cbb03b1b98',
+      'e5e148027499276e65c48749129ca014bb4e53279b1ac6314d124f4e30166076'
+    ];
+
+    expect(hashes.map((hash) => getProposalSource(hash))).toEqual(hashes.map(() => ({
+      kind: 'mtonga',
+      label: 'MTONGA plan'
+    })));
+  });
+
+  it('renders the Telegram Wallet contract proposal with source and code hash', () => {
+    const rows = buildConfigChangeRows(-123, undefined, proposedParamMinus123);
+
+    expect(rows).toEqual([
+      {
+        label: 'Shared contract bytecode',
+        current: {
+          kind: 'contract-code',
+          stage: 'Param before',
+          title: 'Param not set',
+          detail: 'No contract bytecode is currently stored in config[-123].'
+        },
+        proposed: {
+          kind: 'contract-code',
+          stage: 'Param after',
+          title: 'Telegram Wallet · WalletTg',
+          detail: 'Shared contract bytecode loaded by Telegram Wallet contracts from config[-123].',
+          codeHash: '6f177fd863213d7bd3b24a694b0b7efb7425721ed1d21490d052ae93276c4406',
+          source: {
+            label: 'View WalletTg source on GitHub',
+            url: 'https://github.com/tolk-vm/tg-wallet-v6/blob/76d7ee5b6882354ffe3a5785eabdc47b76859ce2/contracts/WalletTg/WalletTg.tolk'
+          }
+        }
+      }
+    ]);
   });
 
   it('decodes the MTONGA block-size proposal without a raw-cell fallback', () => {
