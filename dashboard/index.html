@@ -1415,6 +1415,64 @@
         line-height: 24px;
       }
 
+      .featured-resolved {
+        padding: 0;
+        overflow: hidden;
+      }
+
+      .featured-resolved > .summary {
+        margin-top: 14px;
+      }
+
+      .resolved-status-panel {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        margin: 22px 24px 0;
+        padding: 16px 18px;
+        border: 1px solid rgba(12, 124, 89, 0.2);
+        border-radius: 12px;
+        background: var(--accent-soft);
+      }
+
+      .resolved-status-icon {
+        display: grid;
+        width: 34px;
+        height: 34px;
+        flex: 0 0 34px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 900;
+      }
+
+      .resolved-status-copy {
+        min-width: 0;
+      }
+
+      .resolved-status-copy strong {
+        display: block;
+        color: var(--ink);
+        font-size: 16px;
+        line-height: 22px;
+      }
+
+      .resolved-status-copy p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 20px;
+      }
+
+      .resolved-proposal-tabs .proposal-tab {
+        border-color: var(--accent);
+        background: #fff;
+        color: var(--accent);
+        cursor: default;
+      }
+
       .footer {
         width: 100vw;
         margin: 60px 0 0 50%;
@@ -1686,6 +1744,7 @@
         }
 
         .progress-panel,
+        .resolved-status-panel,
         .change-grid {
           margin-left: 16px;
           margin-right: 16px;
@@ -2124,6 +2183,10 @@
 
       function renderResolvedProposal(proposal) {
         const source = normalizeProposalSource(proposal.source);
+        if (proposal.featured) {
+          return renderFeaturedResolvedProposal(proposal, source);
+        }
+
         return `
           <div class="resolved-card">
             <div class="chips">
@@ -2151,6 +2214,61 @@
                   <span class="copy-label">Copy</span>
                 </button>
               </span>
+            </div>
+          </div>
+        `;
+      }
+
+      function renderFeaturedResolvedProposal(proposal, source) {
+        return `
+          <div class="resolved-card featured-resolved proposal">
+            <div class="proposal-head">
+              <div>
+                <p class="eyebrow">Param ${proposal.paramId}</p>
+                <h3 class="proposal-title">${escapeHtml(proposal.paramLabel)}</h3>
+              </div>
+              <div class="chips">
+                ${renderProposalSourceChip(source)}
+                <span class="chip good">Accepted</span>
+                <span class="chip good">Applied on-chain</span>
+              </div>
+            </div>
+
+            <p class="summary">${escapeHtml(proposal.summary)}</p>
+
+            <div class="resolved-status-panel">
+              <span class="resolved-status-icon" aria-hidden="true">✓</span>
+              <div class="resolved-status-copy">
+                <strong>Accepted and applied</strong>
+                <p>${escapeHtml(proposal.closedBecause)}</p>
+              </div>
+            </div>
+
+            <div class="proposal-tabs resolved-proposal-tabs" aria-label="Proposal details">
+              <button class="proposal-tab" type="button" aria-selected="true" disabled>Changes</button>
+            </div>
+
+            <section>
+              <div class="change-grid">
+                ${proposal.changeRows.map((row) => `
+                  <div class="change-row">
+                    <div class="change-label"><strong>${escapeHtml(row.label)}</strong></div>
+                    <div class="change-box">${renderChangeValue(row.current)}</div>
+                    <div class="change-box proposed">${renderChangeValue(row.proposed)}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </section>
+
+            <div class="meta">
+              <span>
+                Proposal hash
+                <button class="copy-hash" type="button" data-copy-value="${proposal.hash}">
+                  <span class="mono">${proposal.hash.slice(0, 16)}…${proposal.hash.slice(-10)}</span>
+                  <span class="copy-label">Copy</span>
+                </button>
+              </span>
+              <span>Resolved · accepted on mainnet</span>
             </div>
           </div>
         `;

@@ -46,6 +46,8 @@ describe('voting dashboard config diffs', () => {
   const proposedParam31 = cellFromBase64('te6cckECEgEAAUgAAQHAAQIBIAIHAgEgAwYCASAEBQAD37AAQb9mZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZwBCv41cAhCzXa3aohn6xFnboP3vsfrk6XoNB5dzn+BQ1pTKAgEgCA0CASAJCgBBv2RpATa2BDDdBnoQVxR7dwRLZGF06VOA3eSZ5mmPQDRpAgEgCwwAQb8jObDaqi6U2sqWoMwmKbBj5rjUj3LRD8Kw4cX2t2MQRgBBvx03ZWT+b2OqixRQhElig6jjHElLr+HY2JRS8d0LI362AgEgDhECASAPEABBvxQ+JA2bIH1xGkMaD2JTClAp2f/9H2pq7Cko8El1Jlr+AEG/NJMSh8riPi3BTUTtcxsWjG8RLKnLctNjAM4rw8NN+xYAQb9Vr7RxN7xi+L9lCwD5yg91WmOGv8qmlniDDwvSA+yY0Zprwv0=');
   const proposedParam46 = cellFromBase64('te6cckEBAQEAKwAAUTYBFj6SNICbWwIYboM9CCuKPbuCJbIwunSpwG7yTPM0x6AaNAAAAARAqAj+qQ==');
   const proposedParamMinus123 = cellFromBase64('te6cckECFAEAAxUAART/APSkE/S88sgLAQIBIAIQAgFIAwkCAs8ECAP3IMI1xjtRNDXCweS8AHe7UTQ1ywIBPK/0x/TH9cL/yPIzvkWVBBV+RCSXwThAtcsIxxLc6SOMNMf0x/TH9MH10xRJbry4IVRNbry4IYB+CO88uCIAqTIz4QCyx8Tyx8Ty//J7VT7AODXLCOcS3Ok4wLXLCfd1M484wKED4AUGBwCg0x/TH9MfURS68uCFUSS68uCG+CO88uCIAaTIz4QCyx8Syx8Sy//J7VRwAdMH9AWOFdD0BCDXSlFEoASW0wfUAvsA5NEgbuYwIfLgk7ry4JMAuNMf0x/TH9P/10xRJbry4IVRNbry4IYB+CO88uCIUUG98uCU+Cj6RMiLxLRVlfUk9UQVRJT06M8WEsoHy//5FgTQgwjXGNFUFAT5EPLglaTIz4QCyx/LH8v/ye1UAATy8AABIAIBIAoPAgEgCw4CAW4MDQA9rc52omhrhYPJeADvdqJoa5YEAnlf6Y+Y6Y+Y64X/wAA3rx32omhrhYPJeADvdqJoa5YEAnlf6Y+Y64WPwAAxuMl+1E0NcLB5LwAd7tRNDXLAgE8r/XCx+AARvjcvaiaGuFg8AvjygwjXGO1E0NcLB5LwAd7tRNDXLAgE8r/TH9Mf1wv/I8jO+RZUEFX5EJPywIfhAtcsIxxLc6yOOtMf0x/TH9MH10xRJbry4IVRNbry4IYB+CO88uCI+AACpMjPhALLHxPLHxPL/8ntVPgPIHKw8uCJ+wDg1ywjnEtzrOMCERIAtNMf0x/TH1EUuvLghVEkuvLghvgjvPLgiPgAAaTIz4QCyx8Syx8Sy//J7VT4D3AB0wf0BY4b0PQEINdKUUSgBJzTB9QicrDy4IkC+wDk0SBu5jAh8uCTuvLgkwHQidcnjl7TH9Mf0x/T/9dMUSW68uCFUTW68uCGAfgjvPLgiFFBvfLglPgo+kTIi8S0VZX1JPVEFUSU9OjPFhLKB8v/+RYE0IMI1xjRVBQE+RDy4JX4AKTIz4QCyx/LH8v/ye1U4IQP8vATAAj7upnIsNvU9A==');
+  const previousLatestParam30 = cellFromBase64('te6cckEBCAEAOQACAxDgAQIBDSIBAAAABMADAQ0iAwAAAATAAwIByQQHAgHUBQYACQAAAGQgAAkAAACvIAAJugAAAlnbWjLo');
+  const acceptedLatestParam30 = cellFromBase64('te6cckEBDAEAUQACAxDgAQQBDSIBAAAABMACAgHJBgMACboAAAJZAQ0iAwAAABDABQIByQYJAgHUBwgACQAAAGQgAAkAAACvIAIBIAoLAAloAAABAgAJZAAABLJyzuAC');
 
   it('decodes the current param 30 proposal as protocol upgrades, not flags', () => {
     const rows = buildConfigChangeRows(30, buildParam30(0, 1), buildParam30(2, 2));
@@ -125,6 +127,21 @@ describe('voting dashboard config diffs', () => {
             url: 'https://github.com/ton-blockchain/tg-wallet-contract/blob/master/contracts/WalletTg/WalletTg.tolk'
           }
         }
+      }
+    ]);
+  });
+
+  it('renders the accepted leader-window proposal as a focused config diff', () => {
+    expect(buildConfigChangeRows(30, previousLatestParam30, acceptedLatestParam30)).toEqual([
+      {
+        label: 'Shardchains · Slots per leader window',
+        current: '4 slots',
+        proposed: '16 slots'
+      },
+      {
+        label: 'Shardchains · Max leader-window desync',
+        current: '250 (node default)',
+        proposed: '64 (explicit override)'
       }
     ]);
   });

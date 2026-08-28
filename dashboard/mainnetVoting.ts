@@ -267,7 +267,8 @@ type ResolvedProposal = {
     status: 'accepted',
     summary: string,
     closedBecause: string,
-    changeRows: ChangeRow[]
+    changeRows: ChangeRow[],
+    featured?: boolean
 };
 
 type VsetEntry = {
@@ -356,7 +357,8 @@ type KnownConfigResolvedProposal = {
     acceptedValue?: Cell,
     acceptedValueHash?: string,
     summary: string,
-    closedBecause: string
+    closedBecause: string,
+    featured?: boolean
 };
 
 const MAINNET_CONFIG_ADDRESS = Address.parse('Ef9VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVbxn');
@@ -500,6 +502,25 @@ const LAST_KNOWN_PROPOSAL = {
 };
 
 const RECENT_ACCEPTED_CONFIG_PROPOSALS: KnownConfigResolvedProposal[] = [
+    {
+        hash: 'cea2327f6b84fca2afb616ed45c042350b80106ece94e5530dac72cbb03b1b98',
+        paramId: -123,
+        paramLabel: PARAM_LABELS[-123],
+        acceptedValueHash: TELEGRAM_WALLET_REV00_CODE_HASH,
+        summary: PARAM_DESCRIPTIONS[-123],
+        closedBecause: 'Acceptance was observed on 2026-08-28; the proposal is gone from get_proposal, and live config[-123] now contains the proposed Telegram Wallet contract code.',
+        featured: true
+    },
+    {
+        hash: 'e5e148027499276e65c48749129ca014bb4e53279b1ac6314d124f4e30166076',
+        paramId: 30,
+        paramLabel: PARAM_LABELS[30],
+        previousValue: cellFromBase64('te6cckEBCAEAOQACAxDgAQIBDSIBAAAABMADAQ0iAwAAAATAAwIByQQHAgHUBQYACQAAAGQgAAkAAACvIAAJugAAAlnbWjLo'),
+        acceptedValueHash: '5fac466aaf9ce40a934d4f62e727506ca9854c4275fec4257d59e0a4e0e8deca',
+        summary: 'This proposal was accepted and applied on-chain. Shardchain leaders now receive 16 slots per leader window, with maximum leader-window desync explicitly set to 64.',
+        closedBecause: 'Acceptance was observed on 2026-08-28; the proposal is gone from get_proposal, and live config param 30 now matches the proposed consensus settings.',
+        featured: true
+    },
     {
         hash: 'b9fc3e68609931713760d0596a3482d9a084c90062d697aee7b420fc1b32a6e5',
         paramId: 18,
@@ -850,7 +871,8 @@ function buildResolvedConfigProposal(
         status: 'accepted',
         summary: proposal.summary,
         closedBecause: proposal.closedBecause,
-        changeRows: buildConfigChangeRows(proposal.paramId, proposal.previousValue, acceptedValue)
+        changeRows: buildConfigChangeRows(proposal.paramId, proposal.previousValue, acceptedValue),
+        featured: proposal.featured
     };
 }
 
