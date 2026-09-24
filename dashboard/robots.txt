@@ -1,6 +1,4 @@
 User-agent: *
 Allow: /
-Disallow: /api/
-Disallow: /healthz
 
 Sitemap: https://vote.lagus.cooking/sitemap.xml

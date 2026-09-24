@@ -1,0 +1,1 @@
+export const TONCENTER_API_KEY = '1a84bb7285eba5c45f7aadca816efc2771f77a48d92b9ddddba59a0dbcae3fc5';

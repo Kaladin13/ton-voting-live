@@ -1,7 +1,7 @@
-import { TonApiClient } from '@ton-api/client';
-import { ContractAdapter } from '@ton-api/ton-adapter';
+import { Buffer } from 'buffer';
+import { toncenter, type ToncenterClient } from './toncenter';
 import { Address, Cell, Dictionary, DictionaryValue, Slice, TupleReader } from '@ton/core';
-import { Config, type ConfigProposalStatus } from '../wrappers/Config';
+import { type ConfigProposalStatus } from '../wrappers/Config';
 import { getElectionsConf, getValidatorsConf, ValidatorDescriptionValue } from '../wrappers/ValidatorUtils';
 
 type ProposalSetup = {
@@ -420,9 +420,6 @@ const PARAM_DESCRIPTIONS: Record<number, string> = {
     [-123]: 'Adding the tg-wallet-v1 contract code to the network configuration file. The contract is proposed for use in the native Gram Wallet on Telegram'
 };
 
-const tonApi = new TonApiClient({ baseUrl: 'https://tonapi.io' });
-const adapter = new ContractAdapter(tonApi);
-const config = adapter.open(Config.createFromAddress(MAINNET_CONFIG_ADDRESS));
 
 const LAST_KNOWN_PROPOSAL_HASH = 'ea1c88dac0a979fa5c4f52037418d8f77f8ef08a73278809bd5879af4c58004f';
 const MTONGA_PROPOSAL_HASHES = [
@@ -449,7 +446,6 @@ const MTONGA_PROPOSAL_HASHES = [
     'eb942bffeb937bc18cec457864e980e4e08e44de9fca48513ccb27d138a545e8'
 ];
 const MTONGA_PROPOSAL_HASH_SET = new Set(MTONGA_PROPOSAL_HASHES);
-const KNOWN_PROPOSAL_FETCH_DELAY_MS = 250;
 
 const LAST_KNOWN_PROPOSAL = {
     hash: LAST_KNOWN_PROPOSAL_HASH,
@@ -621,9 +617,9 @@ const RECENT_ACCEPTED_CONFIG_PROPOSALS: KnownConfigResolvedProposal[] = [
     }
 ];
 
-export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
-    const cfg = await config.getConfig();
-    const proposals = (await fetchActiveConfigProposals()).filter((proposal) => (
+export async function fetchMainnetVotingSnapshot(client: ToncenterClient = toncenter): Promise<VotingSnapshot> {
+    const { config: cfg, seqno } = await client.getConfig(MAINNET_CONFIG_ADDRESS);
+    const proposals = (await fetchActiveConfigProposals(client, seqno)).filter((proposal) => (
         isChangeConf31(toHex(proposal.proposalHash), proposal.param_id)
     ));
     const voteSetup = parseVoteSetup(getRequiredParam(cfg, 11));
@@ -717,71 +713,15 @@ export async function fetchMainnetVotingSnapshot(): Promise<VotingSnapshot> {
     };
 }
 
-async function fetchActiveConfigProposals(): Promise<ConfigProposalStatus[]> {
-    try {
-        return await config.getListedProposals();
-    } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.warn(`list_proposals failed (${reason}); falling back to known proposal hashes`);
-        return fetchKnownActiveConfigProposals();
-    }
-}
-
-async function fetchKnownActiveConfigProposals(): Promise<ConfigProposalStatus[]> {
-    const proposals: ConfigProposalStatus[] = [];
-
-    for (const [index, hash] of MTONGA_PROPOSAL_HASHES.entries()) {
-        const proposal = await fetchKnownConfigProposalWithRetry(hash);
-
-        if (proposal) {
-            proposals.push(proposal);
-        }
-
-        if (index < MTONGA_PROPOSAL_HASHES.length - 1) {
-            await delay(KNOWN_PROPOSAL_FETCH_DELAY_MS);
-        }
-    }
-
-    return proposals;
-}
-
-async function fetchKnownConfigProposalWithRetry(hash: string): Promise<ConfigProposalStatus | null> {
-    const maxAttempts = 3;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        try {
-            return await fetchKnownConfigProposal(hash);
-        } catch (error) {
-            if (attempt === maxAttempts) {
-                throw error;
-            }
-
-            await delay(1_000 * attempt);
-        }
-    }
-
-    return null;
-}
-
-async function fetchKnownConfigProposal(hash: string): Promise<ConfigProposalStatus | null> {
-    const result = await tonApi.blockchain.execGetMethodForBlockchainAccount(
-        MAINNET_CONFIG_ADDRESS,
-        'get_proposal',
-        { args: [`0x${hash}`] }
-    );
-
-    if (!result.success || result.exitCode !== 0) {
-        throw new Error(`get_proposal ${hash} failed with exit code ${result.exitCode}`);
-    }
-
-    const stack = new TupleReader(result.stack);
-    const proposalTuple = stack.readTupleOpt();
-
-    if (!proposalTuple) {
-        return null;
-    }
-
-    return parseConfigProposalStatus(hash, proposalTuple);
+async function fetchActiveConfigProposals(client: ToncenterClient, seqno: number): Promise<ConfigProposalStatus[]> {
+    // Pin both reads to the same masterchain block, including validator rollovers.
+    const stack = await client.runGetMethod(MAINNET_CONFIG_ADDRESS, 'list_proposals', seqno);
+    return stack.readLispList().map((item) => {
+        if (item.type !== 'tuple') throw new Error(`Unexpected proposal type: ${item.type}`);
+        const tuple = new TupleReader(item.items);
+        const hash = toHex(tuple.readBigNumber());
+        return parseConfigProposalStatus(hash, tuple.readTuple());
+    });
 }
 
 function parseConfigProposalStatus(hash: string, proposalTuple: TupleReader): ConfigProposalStatus {
@@ -818,12 +758,6 @@ function parseConfigProposalStatus(hash: string, proposalTuple: TupleReader): Co
         wins,
         losses
     };
-}
-
-function delay(ms: number) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
 }
 
 function buildResolvedProposals(
